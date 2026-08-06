@@ -26,12 +26,29 @@ jobs:
       - name: Build iOS Simulator app
         run: flutter build ios --simulator --no-codesign
 
+      - name: Run on iOS Simulator and capture evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          DEVICE_ID="$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(device["udid"] for runtime in d["devices"].values() for device in runtime if device["isAvailable"]))')"
+          echo "Using simulator: ${DEVICE_ID}"
+          xcrun simctl bootstatus "${DEVICE_ID}" -b
+          xcrun simctl install "${DEVICE_ID}" build/ios/iphonesimulator/Runner.app
+          xcrun simctl launch "${DEVICE_ID}" com.velzog.livraison.livraisonMobile
+          sleep 8
+          xcrun simctl io "${DEVICE_ID}" screenshot ios-simulator.png
+          xcrun simctl spawn "${DEVICE_ID}" log show --last 2m --style compact > ios-simulator.log || true
+          xcrun simctl shutdown "${DEVICE_ID}" || true
+
       - name: Package simulator app
         run: ditto -c -k --sequesterRsrc --keepParent build/ios/iphonesimulator/Runner.app livraison_mobile-ios-simulator.zip
 
-      - name: Upload simulator artifact
+      - name: Upload simulator artifacts
         uses: actions/upload-artifact@v4
         with:
           name: livraison_mobile-ios-simulator
-          path: livraison_mobile-ios-simulator.zip
+          path: |
+            livraison_mobile-ios-simulator.zip
+            ios-simulator.png
+            ios-simulator.log
           retention-days: 14
