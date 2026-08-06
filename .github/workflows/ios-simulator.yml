@@ -1,4 +1,5 @@
 name: Build iOS simulator artifact
+# Build on a hosted macOS runner for Windows developers.
 
 on:
   workflow_dispatch:
