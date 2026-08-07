@@ -49,11 +49,13 @@ class Livraison {
   Livraison({
     required this.destinataire,
     required this.adresse,
+    this.commentaire = '',
     this.statut = 'À faire',
     this.photoBytes,
   });
-  final String destinataire;
-  final String adresse;
+  String destinataire;
+  String adresse;
+  String commentaire;
   String statut;
   Uint8List? photoBytes;
 }
@@ -204,6 +206,7 @@ class _TourneePageState extends State<TourneePage> {
           (delivery) => {
             'name': delivery.destinataire,
             'address': delivery.adresse,
+            'comment': delivery.commentaire,
             'status': delivery.statut,
             'hasPhoto': delivery.photoBytes != null,
             'photoBase64': delivery.photoBytes == null
@@ -306,6 +309,7 @@ class _TourneePageState extends State<TourneePage> {
   Future<void> _addDelivery() async {
     final name = TextEditingController();
     final address = TextEditingController();
+    final comment = TextEditingController();
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -323,6 +327,16 @@ class _TourneePageState extends State<TourneePage> {
               decoration: const InputDecoration(
                 labelText: 'Adresse (facultative)',
                 hintText: 'Laisser vide si inconnue',
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: comment,
+              maxLines: 3,
+              decoration: const InputDecoration(
+                labelText: 'Commentaire (facultatif)',
+                hintText: 'Ajouter une précision pour cette livraison',
+                prefixIcon: Icon(Icons.notes_outlined),
               ),
             ),
           ],
@@ -345,12 +359,77 @@ class _TourneePageState extends State<TourneePage> {
           Livraison(
             destinataire: name.text.trim(),
             adresse: address.text.trim(),
+            commentaire: comment.text.trim(),
           ),
         ),
       );
     }
     name.dispose();
     address.dispose();
+    comment.dispose();
+  }
+
+  Future<void> _editDelivery(Livraison livraison) async {
+    final name = TextEditingController(text: livraison.destinataire);
+    final address = TextEditingController(text: livraison.adresse);
+    final comment = TextEditingController(text: livraison.commentaire);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Modifier la livraison'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: name,
+                decoration: const InputDecoration(labelText: 'Nom du client'),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: address,
+                decoration: const InputDecoration(
+                  labelText: 'Adresse (facultative)',
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: comment,
+                maxLines: 3,
+                decoration: const InputDecoration(
+                  labelText: 'Commentaire (facultatif)',
+                  hintText: 'Ajouter une précision pour cette livraison',
+                  prefixIcon: Icon(Icons.notes_outlined),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Annuler'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Enregistrer'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && name.text.trim().isNotEmpty && mounted) {
+      setState(() {
+        livraison.destinataire = name.text.trim();
+        livraison.adresse = address.text.trim();
+        livraison.commentaire = comment.text.trim();
+      });
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Livraison modifiée')));
+    }
+    name.dispose();
+    address.dispose();
+    comment.dispose();
   }
 
   Future<void> _showProfile() async {
@@ -703,6 +782,14 @@ class _TourneePageState extends State<TourneePage> {
                                   Text(
                                     'Statut : ${delivery['status'] ?? 'À faire'}',
                                   ),
+                                  if ((delivery['comment'] as String? ?? '')
+                                      .isNotEmpty)
+                                    Text(
+                                      'Commentaire : ${delivery['comment']}',
+                                      style: TextStyle(
+                                        color: Colors.grey.shade700,
+                                      ),
+                                    ),
                                   if (_historyPhoto(delivery) != null)
                                     const Text('Photo de preuve enregistrée'),
                                 ],
@@ -863,6 +950,7 @@ class _TourneePageState extends State<TourneePage> {
                 index: entry.key + 1,
                 livraison: entry.value,
                 onPhoto: () => _showPhotoOptions(entry.value),
+                onEdit: () => _editDelivery(entry.value),
                 onPreview: (bytes) =>
                     _showPhotoPreview(bytes, entry.value.destinataire),
               ),
@@ -984,11 +1072,13 @@ class _DeliveryCard extends StatelessWidget {
     required this.index,
     required this.livraison,
     required this.onPhoto,
+    required this.onEdit,
     required this.onPreview,
   });
   final int index;
   final Livraison livraison;
   final VoidCallback onPhoto;
+  final VoidCallback onEdit;
   final ValueChanged<Uint8List> onPreview;
 
   @override
@@ -1047,10 +1137,25 @@ class _DeliveryCard extends StatelessWidget {
                           fontSize: 13,
                         ),
                       ),
+                      if (livraison.commentaire.isNotEmpty)
+                        Text(
+                          livraison.commentaire,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: Colors.grey.shade700,
+                            fontSize: 13,
+                          ),
+                        ),
                     ],
                   ),
                 ),
                 _StatusChip(done: done),
+                IconButton(
+                  onPressed: onEdit,
+                  tooltip: 'Modifier la livraison',
+                  icon: const Icon(Icons.edit_outlined),
+                ),
               ],
             ),
             if (done)
