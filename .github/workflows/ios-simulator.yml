@@ -49,23 +49,35 @@ jobs:
           done
           xcrun simctl list devices | grep -F "${DEVICE_ID}" | grep -q "Booted" || { echo "Simulator did not boot"; exit 1; }
           xcrun simctl install "${DEVICE_ID}" build/ios/iphonesimulator/Runner.app
+          echo "[demo] app installed"
           rm -f ios-simulator-demo.mp4 ios-simulator-*.png ios-simulator.log
           xcrun simctl io "${DEVICE_ID}" recordVideo --codec=h264 ios-simulator-demo.mp4 &
           VIDEO_PID=$!
-          trap 'kill -INT "${VIDEO_PID}" 2>/dev/null || true; wait "${VIDEO_PID}" 2>/dev/null || true; xcrun simctl shutdown "${DEVICE_ID}" || true' EXIT
+          trap 'kill -TERM "${VIDEO_PID}" 2>/dev/null || true; wait "${VIDEO_PID}" 2>/dev/null || true; xcrun simctl shutdown "${DEVICE_ID}" || true' EXIT
           xcrun simctl launch "${DEVICE_ID}" com.velzog.livraison.livraisonMobile
+          echo "[demo] app launched"
           sleep 2
           xcrun simctl io "${DEVICE_ID}" screenshot ios-simulator-01-launch.png
+          echo "[demo] launch screenshot captured"
           sleep 5
           xcrun simctl io "${DEVICE_ID}" screenshot ios-simulator-02-delivery-photo.png
+          echo "[demo] delivery/photo screenshot captured"
           sleep 5
           xcrun simctl io "${DEVICE_ID}" screenshot ios-simulator-03-profile.png
+          echo "[demo] profile screenshot captured"
           sleep 8
           xcrun simctl io "${DEVICE_ID}" screenshot ios-simulator-04-history.png
+          echo "[demo] history screenshot captured"
           xcrun simctl spawn "${DEVICE_ID}" log show --last 2m --style compact > ios-simulator.log || true
           xcrun simctl io "${DEVICE_ID}" screenshot ios-simulator-05-final.png
-          kill -INT "${VIDEO_PID}" || true
+          echo "[demo] stopping video recorder ${VIDEO_PID}"
+          kill -INT "${VIDEO_PID}" 2>/dev/null || true
+          sleep 2
+          kill -TERM "${VIDEO_PID}" 2>/dev/null || true
+          sleep 2
+          kill -KILL "${VIDEO_PID}" 2>/dev/null || true
           wait "${VIDEO_PID}" || true
+          echo "[demo] video recorder stopped"
           xcrun simctl shutdown "${DEVICE_ID}" || true
 
       - name: Package simulator app
