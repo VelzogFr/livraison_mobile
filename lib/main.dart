@@ -87,6 +87,7 @@ class _TourneePageState extends State<TourneePage> {
   List<Map<String, dynamic>> _history = [];
   bool _historyLoading = true;
   bool _profileLoading = true;
+  bool _savingDay = false;
   final _secureStorage = const FlutterSecureStorage();
   final _cipher = AesGcm.with256bits();
 
@@ -218,9 +219,6 @@ class _TourneePageState extends State<TourneePage> {
             'status': delivery.statut,
             'hasPhoto': delivery.photos.isNotEmpty,
             'photosBase64': delivery.photos.map(base64Encode).toList(),
-            'photoBase64': delivery.photoBytes == null
-                ? null
-                : base64Encode(delivery.photoBytes!),
           },
         )
         .toList(),
@@ -677,6 +675,7 @@ class _TourneePageState extends State<TourneePage> {
   }
 
   Future<void> _saveDay() async {
+    if (_savingDay) return;
     FocusManager.instance.primaryFocus?.unfocus();
     final confirmed = await showDialog<bool>(
       context: context,
@@ -698,15 +697,28 @@ class _TourneePageState extends State<TourneePage> {
       ),
     );
     if (confirmed != true || !mounted) return;
-    await _persistDay();
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          'Journée enregistrée localement : $_livrees/${_livraisons.length} livraisons',
+    setState(() => _savingDay = true);
+    try {
+      await _persistDay();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Journée enregistrée localement : $_livrees/${_livraisons.length} livraisons',
+          ),
         ),
-      ),
-    );
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Enregistrement impossible : ${error.toString()}'),
+          backgroundColor: Theme.of(context).colorScheme.error,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _savingDay = false);
+    }
   }
 
   Future<void> _clearHistory() async {
@@ -1124,11 +1136,20 @@ class _TourneePageState extends State<TourneePage> {
             SizedBox(
               height: 52,
               child: FilledButton.icon(
-                onPressed: _saveDay,
-                icon: const Icon(Icons.check_circle_outline),
-                label: const Text(
-                  'Enregistrer la journée',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                onPressed: _savingDay ? null : _saveDay,
+                icon: _savingDay
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.check_circle_outline),
+                label: Text(
+                  _savingDay ? 'Enregistrement…' : 'Enregistrer la journée',
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
             ),
