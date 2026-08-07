@@ -64,11 +64,13 @@ class TourneePage extends StatefulWidget {
 class _TourneePageState extends State<TourneePage> {
   final _notesController = TextEditingController();
   final _mileageController = TextEditingController();
+  final _profileNameController = TextEditingController();
   DateTime _selectedDate = DateTime.now();
   final _picker = ImagePicker();
   final _livraisons = <Livraison>[];
   List<Map<String, dynamic>> _history = [];
   bool _historyLoading = true;
+  bool _profileLoading = true;
   final _secureStorage = const FlutterSecureStorage();
   final _cipher = AesGcm.with256bits();
 
@@ -76,6 +78,14 @@ class _TourneePageState extends State<TourneePage> {
   void initState() {
     super.initState();
     _loadHistory();
+    _loadProfile();
+  }
+
+  Future<void> _loadProfile() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    _profileNameController.text = prefs.getString('local_profile_name') ?? '';
+    setState(() => _profileLoading = false);
   }
 
   Future<SecretKey> _getEncryptionKey() async {
@@ -181,6 +191,7 @@ class _TourneePageState extends State<TourneePage> {
   void dispose() {
     _notesController.dispose();
     _mileageController.dispose();
+    _profileNameController.dispose();
     super.dispose();
   }
 
@@ -257,7 +268,10 @@ class _TourneePageState extends State<TourneePage> {
             const SizedBox(height: 12),
             TextField(
               controller: address,
-              decoration: const InputDecoration(labelText: 'Adresse'),
+              decoration: const InputDecoration(
+                labelText: 'Adresse (facultative)',
+                hintText: 'Laisser vide si inconnue',
+              ),
             ),
           ],
         ),
@@ -273,10 +287,7 @@ class _TourneePageState extends State<TourneePage> {
         ],
       ),
     );
-    if (confirmed == true &&
-        name.text.trim().isNotEmpty &&
-        address.text.trim().isNotEmpty &&
-        mounted) {
+    if (confirmed == true && name.text.trim().isNotEmpty && mounted) {
       setState(
         () => _livraisons.add(
           Livraison(
@@ -288,6 +299,72 @@ class _TourneePageState extends State<TourneePage> {
     }
     name.dispose();
     address.dispose();
+  }
+
+  Future<void> _showProfile() async {
+    if (_profileLoading) return;
+    final controller = TextEditingController(text: _profileNameController.text);
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (sheetContext) => Padding(
+        padding: EdgeInsets.fromLTRB(
+          20,
+          8,
+          20,
+          MediaQuery.viewInsetsOf(sheetContext).bottom + 24,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Profil local',
+              style: Theme.of(sheetContext).textTheme.headlineSmall,
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Ce profil reste sur ce téléphone. Il ne s’agit pas d’une connexion Google ou d’un compte cloud.',
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              decoration: const InputDecoration(
+                labelText: 'Nom du profil',
+                hintText: 'Saisir un nom',
+                prefixIcon: Icon(Icons.person_outline),
+              ),
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: () async {
+                  final prefs = await SharedPreferences.getInstance();
+                  await prefs.setString(
+                    'local_profile_name',
+                    controller.text.trim(),
+                  );
+                  if (!sheetContext.mounted) return;
+                  _profileNameController.text = controller.text.trim();
+                  Navigator.pop(sheetContext);
+                  if (!mounted) return;
+                  setState(() {});
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Profil local enregistré')),
+                  );
+                },
+                icon: const Icon(Icons.save_outlined),
+                label: const Text('Enregistrer le profil'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    controller.dispose();
   }
 
   Future<void> _saveDay() async {
@@ -539,6 +616,7 @@ class _TourneePageState extends State<TourneePage> {
         selectedIndex: 0,
         onDestinationSelected: (index) {
           if (index == 1) _showHistory();
+          if (index == 2) _showProfile();
         },
         destinations: const [
           NavigationDestination(
@@ -672,7 +750,9 @@ class _DeliveryCard extends StatelessWidget {
                       ),
                       const SizedBox(height: 3),
                       Text(
-                        livraison.adresse,
+                        livraison.adresse.isEmpty
+                            ? 'Adresse non renseignée'
+                            : livraison.adresse,
                         style: TextStyle(
                           color: Colors.grey.shade600,
                           fontSize: 13,
