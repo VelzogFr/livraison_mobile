@@ -10,6 +10,10 @@ concurrency:
   group: ios-simulator-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+  actions: write
+
 jobs:
   build-ios-simulator:
     runs-on: macos-latest
@@ -28,7 +32,7 @@ jobs:
         run: flutter pub get
 
       - name: Build iOS Simulator app
-        run: flutter build ios --simulator --no-codesign
+        run: flutter build ios --simulator --no-codesign --dart-define=DEMO_MODE=true
 
       - name: Run on iOS Simulator and capture evidence
         shell: bash
@@ -45,16 +49,21 @@ jobs:
           done
           xcrun simctl list devices | grep -F "${DEVICE_ID}" | grep -q "Booted" || { echo "Simulator did not boot"; exit 1; }
           xcrun simctl install "${DEVICE_ID}" build/ios/iphonesimulator/Runner.app
+          rm -f ios-simulator-demo.mp4 ios-simulator-*.png ios-simulator.log
           xcrun simctl io "${DEVICE_ID}" recordVideo --codec=h264 ios-simulator-demo.mp4 &
           VIDEO_PID=$!
           trap 'kill -INT "${VIDEO_PID}" 2>/dev/null || true; wait "${VIDEO_PID}" 2>/dev/null || true; xcrun simctl shutdown "${DEVICE_ID}" || true' EXIT
-          timeout 240 flutter test integration_test/demo_test.dart -d "${DEVICE_ID}"
+          xcrun simctl launch "${DEVICE_ID}" com.velzog.livraison.livraisonMobile
           sleep 2
           xcrun simctl io "${DEVICE_ID}" screenshot ios-simulator-01-launch.png
-          sleep 6
-          xcrun simctl io "${DEVICE_ID}" screenshot ios-simulator-02-after-render.png
+          sleep 5
+          xcrun simctl io "${DEVICE_ID}" screenshot ios-simulator-02-delivery-photo.png
+          sleep 5
+          xcrun simctl io "${DEVICE_ID}" screenshot ios-simulator-03-profile.png
+          sleep 8
+          xcrun simctl io "${DEVICE_ID}" screenshot ios-simulator-04-history.png
           xcrun simctl spawn "${DEVICE_ID}" log show --last 2m --style compact > ios-simulator.log || true
-          xcrun simctl io "${DEVICE_ID}" screenshot ios-simulator-03-before-shutdown.png
+          xcrun simctl io "${DEVICE_ID}" screenshot ios-simulator-05-final.png
           kill -INT "${VIDEO_PID}" || true
           wait "${VIDEO_PID}" || true
           xcrun simctl shutdown "${DEVICE_ID}" || true
@@ -62,15 +71,31 @@ jobs:
       - name: Package simulator app
         run: ditto -c -k --sequesterRsrc --keepParent build/ios/iphonesimulator/Runner.app livraison_mobile-ios-simulator.zip
 
+      - name: Delete previous video artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api --paginate \
+            -H 'Accept: application/vnd.github+json' \
+            /repos/${{ github.repository }}/actions/artifacts \
+            --jq '.artifacts[] | select(.name == "livraison_mobile-ios-simulator") | .id' \
+          | while read -r artifact_id; do
+              [ -z "${artifact_id}" ] || gh api --method DELETE "/repos/${{ github.repository }}/actions/artifacts/${artifact_id}"
+            done
+
       - name: Upload simulator artifacts
         uses: actions/upload-artifact@v7
+        env:
+          GH_TOKEN: ${{ github.token }}
         with:
           name: livraison_mobile-ios-simulator
           path: |
             livraison_mobile-ios-simulator.zip
             ios-simulator-01-launch.png
-            ios-simulator-02-after-render.png
-            ios-simulator-03-before-shutdown.png
+            ios-simulator-02-delivery-photo.png
+            ios-simulator-03-profile.png
+            ios-simulator-04-history.png
+            ios-simulator-05-final.png
             ios-simulator-demo.mp4
             ios-simulator.log
           retention-days: 14

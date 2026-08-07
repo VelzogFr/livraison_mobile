@@ -9,6 +9,8 @@ import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+const _demoMode = bool.fromEnvironment('DEMO_MODE', defaultValue: false);
+
 void main() => runApp(const LivraisonApp());
 
 class LivraisonApp extends StatelessWidget {
@@ -79,6 +81,30 @@ class _TourneePageState extends State<TourneePage> {
     super.initState();
     _loadHistory();
     _loadProfile();
+    if (_demoMode) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _runDemo());
+    }
+  }
+
+  Future<void> _runDemo() async {
+    await Future<void>.delayed(const Duration(seconds: 2));
+    if (!mounted) return;
+    final delivery = Livraison(
+      destinataire: 'Client de démonstration',
+      adresse: '',
+    );
+    setState(() => _livraisons.add(delivery));
+    await Future<void>.delayed(const Duration(seconds: 3));
+    if (!mounted) return;
+    await _showPhotoOptions(delivery, demo: true);
+    await Future<void>.delayed(const Duration(seconds: 2));
+    if (!mounted) return;
+    await _showProfile(demo: true);
+    await Future<void>.delayed(const Duration(seconds: 2));
+    if (!mounted) return;
+    await _persistDay();
+    await Future<void>.delayed(const Duration(seconds: 2));
+    if (mounted) await _showHistory();
   }
 
   Future<void> _loadProfile() async {
@@ -222,8 +248,11 @@ class _TourneePageState extends State<TourneePage> {
     );
   }
 
-  Future<void> _showPhotoOptions(Livraison livraison) async {
-    await showModalBottomSheet<void>(
+  Future<void> _showPhotoOptions(
+    Livraison livraison, {
+    bool demo = false,
+  }) async {
+    final sheet = showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
       builder: (context) => SafeArea(
@@ -249,6 +278,12 @@ class _TourneePageState extends State<TourneePage> {
         ),
       ),
     );
+    if (demo) {
+      Future<void>.delayed(const Duration(seconds: 3), () {
+        if (mounted) Navigator.of(context).pop();
+      });
+    }
+    await sheet;
   }
 
   Future<void> _addDelivery() async {
@@ -301,10 +336,12 @@ class _TourneePageState extends State<TourneePage> {
     address.dispose();
   }
 
-  Future<void> _showProfile() async {
+  Future<void> _showProfile({bool demo = false}) async {
     if (_profileLoading) return;
-    final controller = TextEditingController(text: _profileNameController.text);
-    await showModalBottomSheet<void>(
+    final controller = TextEditingController(
+      text: demo ? 'Profil de démonstration' : _profileNameController.text,
+    );
+    final sheet = showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
@@ -364,6 +401,17 @@ class _TourneePageState extends State<TourneePage> {
         ),
       ),
     );
+    if (demo) {
+      Future<void>.delayed(const Duration(seconds: 3), () async {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('local_profile_name', controller.text.trim());
+        if (!mounted) return;
+        _profileNameController.text = controller.text.trim();
+        Navigator.of(context).pop();
+        setState(() {});
+      });
+    }
+    await sheet;
     controller.dispose();
   }
 
