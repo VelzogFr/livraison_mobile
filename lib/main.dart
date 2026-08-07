@@ -4,11 +4,14 @@ import 'dart:typed_data';
 import 'package:cryptography/cryptography.dart'
     show AesGcm, Mac, SecretBox, SecretKey;
 import 'package:file_selector/file_selector.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'platform_download.dart';
 
@@ -894,6 +897,36 @@ class _TourneePageState extends State<TourneePage> {
     );
   }
 
+  Future<void> _shareHistoryByEmail() async {
+    final backup = {
+      'format': 'livraison_mobile_encrypted_backup_v1',
+      'createdAt': DateTime.now().toIso8601String(),
+      'payload': await _encryptHistory(_history),
+    };
+    final bytes = Uint8List.fromList(utf8.encode(jsonEncode(backup)));
+    const fileName = 'historique_livraison.livraison-backup';
+    if (kIsWeb) {
+      await saveBackupFile(fileName, utf8.decode(bytes));
+      final uri = Uri(
+        scheme: 'mailto',
+        queryParameters: {
+          'subject': 'Historique de livraison',
+          'body':
+              'Le fichier $fileName a été téléchargé. Ajoutez-le à ce message avant l’envoi.',
+        },
+      );
+      await launchUrl(uri);
+    } else {
+      await SharePlus.instance.share(
+        ShareParams(
+          subject: 'Historique de livraison',
+          text: 'Historique chiffré des livraisons et preuves photo.',
+          files: [XFile.fromData(bytes, name: fileName)],
+        ),
+      );
+    }
+  }
+
   List<Uint8List> _historyPhotos(Map<String, dynamic> delivery) {
     final values = delivery['photosBase64'];
     if (values is List) {
@@ -1063,7 +1096,9 @@ class _TourneePageState extends State<TourneePage> {
                       style: Theme.of(context).textTheme.headlineSmall,
                     ),
                     const SizedBox(height: 8),
-                    Row(
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
                       children: [
                         TextButton.icon(
                           onPressed: _exportHistory,
@@ -1074,6 +1109,11 @@ class _TourneePageState extends State<TourneePage> {
                           onPressed: _importHistory,
                           icon: const Icon(Icons.upload_file_outlined),
                           label: const Text('Importer'),
+                        ),
+                        TextButton.icon(
+                          onPressed: _shareHistoryByEmail,
+                          icon: const Icon(Icons.mail_outline),
+                          label: const Text('Envoyer par e-mail'),
                         ),
                         TextButton.icon(
                           onPressed: _clearHistory,
