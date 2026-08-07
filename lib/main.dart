@@ -897,6 +897,89 @@ class _TourneePageState extends State<TourneePage> {
     );
   }
 
+  String _escapeHtml(Object? value) {
+    return const HtmlEscape().convert(value?.toString() ?? '');
+  }
+
+  String _buildHtmlReport() {
+    final buffer = StringBuffer(
+      '''<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Rapport des livraisons</title><style>body{font-family:Arial,sans-serif;max-width:900px;margin:24px auto;padding:0 16px;color:#202124}h1{color:#174a7e}h2{border-bottom:1px solid #ddd;padding-bottom:6px}.delivery{border:1px solid #ddd;border-radius:8px;padding:12px;margin:12px 0}.photos{display:flex;flex-wrap:wrap;gap:10px}.photos img{max-width:220px;max-height:220px;object-fit:contain;border-radius:6px;border:1px solid #ccc}</style></head><body><h1>Rapport des livraisons</h1>''',
+    );
+    buffer.writeln(
+      '<p>Généré le : ${_escapeHtml(DateTime.now().toLocal())}</p>',
+    );
+    for (final day in _history) {
+      buffer
+        ..writeln('<h2>Journée du ${_escapeHtml(day['date'])}</h2>')
+        ..writeln(
+          '<p><strong>Kilométrage :</strong> ${_escapeHtml(day['mileage'] ?? 'non renseigné')}</p>',
+        );
+      final notes = day['notes']?.toString() ?? '';
+      if (notes.isNotEmpty) {
+        buffer.writeln(
+          '<p><strong>Compte-rendu :</strong> ${_escapeHtml(notes)}</p>',
+        );
+      }
+      final deliveries = day['deliveries'] as List<dynamic>? ?? [];
+      for (final item in deliveries) {
+        final delivery = Map<String, dynamic>.from(item as Map);
+        buffer
+          ..writeln(
+            '<div class="delivery"><h3>${_escapeHtml(delivery['name'])}</h3>',
+          )
+          ..writeln(
+            '<p><strong>Adresse :</strong> ${_escapeHtml(delivery['address'])}<br><strong>Statut :</strong> ${_escapeHtml(delivery['status'])}</p>',
+          );
+        final comment = delivery['comment']?.toString() ?? '';
+        if (comment.isNotEmpty) {
+          buffer.writeln(
+            '<p><strong>Commentaire :</strong> ${_escapeHtml(comment)}</p>',
+          );
+        }
+        final photos = _historyPhotos(delivery);
+        if (photos.isNotEmpty) {
+          buffer.writeln('<div class="photos">');
+          for (final photo in photos) {
+            buffer.writeln(
+              '<img src="data:image/jpeg;base64,${base64Encode(photo)}" alt="Preuve photo">',
+            );
+          }
+          buffer.writeln('</div>');
+        }
+        buffer.writeln('</div>');
+      }
+    }
+    return '${buffer.toString()}</body></html>';
+  }
+
+  Future<void> _shareFullReport() async {
+    final html = _buildHtmlReport();
+    final bytes = Uint8List.fromList(utf8.encode(html));
+    const fileName = 'rapport_livraisons_complet.html';
+    try {
+      await SharePlus.instance.share(
+        ShareParams(
+          subject: 'Rapport complet des livraisons',
+          text: 'Rapport complet avec les preuves photo.',
+          files: [XFile.fromData(bytes, name: fileName, mimeType: 'text/html')],
+        ),
+      );
+    } catch (_) {
+      await saveBackupFile(fileName, html);
+      if (kIsWeb) {
+        final uri = Uri.https('mail.google.com', '/mail/u/0/', {
+          'view': 'cm',
+          'fs': '1',
+          'tf': '1',
+          'su': 'Rapport complet des livraisons',
+          'body':
+              'Le fichier $fileName a été téléchargé. Ajoutez-le à ce message avant l’envoi.',
+        });
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      }
+    }
+  }
+
   String _buildReport() {
     final buffer = StringBuffer()
       ..writeln('RAPPORT DES LIVRAISONS')
@@ -1165,6 +1248,11 @@ class _TourneePageState extends State<TourneePage> {
                     onPressed: _importHistory,
                     icon: const Icon(Icons.upload_file_outlined),
                     label: const Text('Importer'),
+                  ),
+                  TextButton.icon(
+                    onPressed: _shareFullReport,
+                    icon: const Icon(Icons.description_outlined),
+                    label: const Text('Rapport complet + photos'),
                   ),
                   TextButton.icon(
                     onPressed: _shareReportByGmail,
