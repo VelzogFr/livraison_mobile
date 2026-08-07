@@ -45,6 +45,8 @@ jobs:
           done
           xcrun simctl list devices | grep -F "${DEVICE_ID}" | grep -q "Booted" || { echo "Simulator did not boot"; exit 1; }
           xcrun simctl install "${DEVICE_ID}" build/ios/iphonesimulator/Runner.app
+          xcrun simctl io "${DEVICE_ID}" recordVideo --codec=h264 ios-simulator-demo.mp4 &
+          VIDEO_PID=$!
           xcrun simctl launch "${DEVICE_ID}" com.velzog.livraison.livraisonMobile
           sleep 2
           xcrun simctl io "${DEVICE_ID}" screenshot ios-simulator-01-launch.png
@@ -52,6 +54,8 @@ jobs:
           xcrun simctl io "${DEVICE_ID}" screenshot ios-simulator-02-after-render.png
           xcrun simctl spawn "${DEVICE_ID}" log show --last 2m --style compact > ios-simulator.log || true
           xcrun simctl io "${DEVICE_ID}" screenshot ios-simulator-03-before-shutdown.png
+          kill -INT "${VIDEO_PID}" || true
+          wait "${VIDEO_PID}" || true
           xcrun simctl shutdown "${DEVICE_ID}" || true
 
       - name: Package simulator app
@@ -66,5 +70,6 @@ jobs:
             ios-simulator-01-launch.png
             ios-simulator-02-after-render.png
             ios-simulator-03-before-shutdown.png
+            ios-simulator-demo.mp4
             ios-simulator.log
           retention-days: 14
