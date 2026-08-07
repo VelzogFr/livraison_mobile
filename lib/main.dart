@@ -897,6 +897,63 @@ class _TourneePageState extends State<TourneePage> {
     );
   }
 
+  String _buildReport() {
+    final buffer = StringBuffer()
+      ..writeln('RAPPORT DES LIVRAISONS')
+      ..writeln('Généré le : ${DateTime.now().toLocal()}')
+      ..writeln();
+    for (final day in _history) {
+      buffer
+        ..writeln('Journée du ${day['date']}')
+        ..writeln('Kilométrage : ${day['mileage'] ?? 'non renseigné'}')
+        ..writeln('Compte-rendu : ${day['notes'] ?? ''}');
+      final deliveries = day['deliveries'] as List<dynamic>? ?? [];
+      for (final item in deliveries) {
+        final delivery = Map<String, dynamic>.from(item as Map);
+        final photos = _historyPhotos(delivery).length;
+        buffer.writeln(
+          '- ${delivery['name'] ?? ''} | ${delivery['status'] ?? ''} | '
+          '${delivery['address'] ?? ''} | photos : $photos',
+        );
+        final comment = delivery['comment']?.toString() ?? '';
+        if (comment.isNotEmpty) buffer.writeln('  Commentaire : $comment');
+      }
+      buffer.writeln();
+    }
+    return buffer.toString();
+  }
+
+  Future<void> _shareReportByGmail() async {
+    final report = _buildReport();
+    final backup = {
+      'format': 'livraison_mobile_encrypted_backup_v1',
+      'createdAt': DateTime.now().toIso8601String(),
+      'payload': await _encryptHistory(_history),
+    };
+    final backupBytes = Uint8List.fromList(utf8.encode(jsonEncode(backup)));
+    const fileName = 'historique_livraison.livraison-backup';
+    if (kIsWeb) {
+      await saveBackupFile(fileName, utf8.decode(backupBytes));
+      final uri = Uri.https('mail.google.com', '/mail/u/0/', {
+        'view': 'cm',
+        'fs': '1',
+        'tf': '1',
+        'su': 'Rapport des livraisons',
+        'body':
+            '$report\n\nLa sauvegarde chiffrée a été téléchargée sous $fileName.',
+      });
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } else {
+      await SharePlus.instance.share(
+        ShareParams(
+          subject: 'Rapport des livraisons',
+          text: report,
+          files: [XFile.fromData(backupBytes, name: fileName)],
+        ),
+      );
+    }
+  }
+
   Future<void> _shareHistoryByEmail() async {
     final backup = {
       'format': 'livraison_mobile_encrypted_backup_v1',
@@ -1109,6 +1166,11 @@ class _TourneePageState extends State<TourneePage> {
                           onPressed: _importHistory,
                           icon: const Icon(Icons.upload_file_outlined),
                           label: const Text('Importer'),
+                        ),
+                        TextButton.icon(
+                          onPressed: _shareReportByGmail,
+                          icon: const Icon(Icons.mark_email_read_outlined),
+                          label: const Text('Rapport Gmail'),
                         ),
                         TextButton.icon(
                           onPressed: _shareHistoryByEmail,
