@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:cryptography/cryptography.dart'
     show AesGcm, Mac, SecretBox, SecretKey;
@@ -9,7 +8,6 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:signature/signature.dart';
 
 void main() => runApp(const LivraisonApp());
 
@@ -49,13 +47,11 @@ class Livraison {
     required this.adresse,
     this.statut = 'À faire',
     this.photo,
-    this.signature,
   });
   final String destinataire;
   final String adresse;
   String statut;
   File? photo;
-  Uint8List? signature;
 }
 
 class TourneePage extends StatefulWidget {
@@ -70,21 +66,7 @@ class _TourneePageState extends State<TourneePage> {
   final _mileageController = TextEditingController();
   DateTime _selectedDate = DateTime.now();
   final _picker = ImagePicker();
-  final _livraisons = <Livraison>[
-    Livraison(
-      destinataire: 'Sophie Martin',
-      adresse: '12 rue des Lilas, Paris',
-    ),
-    Livraison(
-      destinataire: 'Boulangerie des Arts',
-      adresse: '8 avenue Victor Hugo, Paris',
-      statut: 'Livré',
-    ),
-    Livraison(
-      destinataire: 'Thomas Bernard',
-      adresse: '4 impasse du Moulin, Montreuil',
-    ),
-  ];
+  final _livraisons = <Livraison>[];
   List<Map<String, dynamic>> _history = [];
   bool _historyLoading = true;
   final _secureStorage = const FlutterSecureStorage();
@@ -177,7 +159,6 @@ class _TourneePageState extends State<TourneePage> {
             'address': delivery.adresse,
             'status': delivery.statut,
             'hasPhoto': delivery.photo != null,
-            'hasSignature': delivery.signature != null,
           },
         )
         .toList(),
@@ -259,75 +240,54 @@ class _TourneePageState extends State<TourneePage> {
     );
   }
 
-  Future<void> _showSignature(Livraison livraison) async {
-    final controller = SignatureController(
-      penStrokeWidth: 3,
-      penColor: const Color(0xFF172B4D),
-      exportBackgroundColor: Colors.white,
-    );
-    final result = await showDialog<Uint8List>(
+  Future<void> _addDelivery() async {
+    final name = TextEditingController();
+    final address = TextEditingController();
+    final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Signature du destinataire'),
-        content: SizedBox(
-          width: 420,
-          height: 230,
-          child: Column(
-            children: [
-              Expanded(
-                child: Container(
-                  decoration: BoxDecoration(
-                    border: Border.all(color: Colors.grey.shade300),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Signature(
-                    controller: controller,
-                    backgroundColor: Colors.white,
-                  ),
-                ),
-              ),
-              Align(
-                alignment: Alignment.centerRight,
-                child: TextButton(
-                  onPressed: controller.clear,
-                  child: const Text('Effacer'),
-                ),
-              ),
-            ],
-          ),
+        title: const Text('Ajouter une livraison'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: name,
+              decoration: const InputDecoration(labelText: 'Nom du client'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: address,
+              decoration: const InputDecoration(labelText: 'Adresse'),
+            ),
+          ],
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(context, false),
             child: const Text('Annuler'),
           ),
           FilledButton(
-            onPressed: () async {
-              if (controller.isEmpty) return;
-              final png = await controller.toPngBytes();
-              if (!context.mounted || png == null) return;
-              Navigator.pop(context, png);
-            },
-            child: const Text('Enregistrer'),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Ajouter'),
           ),
         ],
       ),
     );
-    controller.dispose();
-    if (result == null || !mounted) return;
-    final directory = await getApplicationDocumentsDirectory();
-    final file = File(
-      '${directory.path}/signature_${DateTime.now().millisecondsSinceEpoch}.png',
-    );
-    await file.writeAsBytes(result);
-    if (!mounted) return;
-    setState(() {
-      livraison.signature = result;
-      livraison.statut = 'Livré';
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Signature enregistrée hors ligne')),
-    );
+    if (confirmed == true &&
+        name.text.trim().isNotEmpty &&
+        address.text.trim().isNotEmpty &&
+        mounted) {
+      setState(
+        () => _livraisons.add(
+          Livraison(
+            destinataire: name.text.trim(),
+            adresse: address.text.trim(),
+          ),
+        ),
+      );
+    }
+    name.dispose();
+    address.dispose();
   }
 
   Future<void> _saveDay() async {
@@ -482,7 +442,7 @@ class _TourneePageState extends State<TourneePage> {
           padding: const EdgeInsets.fromLTRB(20, 8, 20, 30),
           children: [
             Text(
-              'Bonjour, Lucas 👋',
+              'Ma tournée du jour',
               style: Theme.of(
                 context,
               ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
@@ -499,7 +459,7 @@ class _TourneePageState extends State<TourneePage> {
               keyboardType: TextInputType.number,
               decoration: const InputDecoration(
                 labelText: 'Kilométrage du jour',
-                hintText: 'Ex. 128450',
+                hintText: 'Saisir le kilométrage',
                 suffixText: 'km',
                 prefixIcon: Icon(Icons.speed_outlined),
               ),
@@ -526,12 +486,21 @@ class _TourneePageState extends State<TourneePage> {
               ],
             ),
             const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: _addDelivery,
+              icon: const Icon(Icons.person_add_alt_1_outlined),
+              label: const Text('Ajouter une livraison'),
+            ),
+            if (_livraisons.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 20),
+                child: Center(child: Text('Aucune livraison ajoutée.')),
+              ),
             ..._livraisons.asMap().entries.map(
               (entry) => _DeliveryCard(
                 index: entry.key + 1,
                 livraison: entry.value,
                 onPhoto: () => _showPhotoOptions(entry.value),
-                onSignature: () => _showSignature(entry.value),
               ),
             ),
             const SizedBox(height: 20),
@@ -650,12 +619,10 @@ class _DeliveryCard extends StatelessWidget {
     required this.index,
     required this.livraison,
     required this.onPhoto,
-    required this.onSignature,
   });
   final int index;
   final Livraison livraison;
   final VoidCallback onPhoto;
-  final VoidCallback onSignature;
 
   @override
   Widget build(BuildContext context) {
@@ -732,19 +699,7 @@ class _DeliveryCard extends StatelessWidget {
                           fit: BoxFit.cover,
                         ),
                       ),
-                    if (livraison.signature != null)
-                      Padding(
-                        padding: const EdgeInsets.only(left: 8),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(8),
-                          child: Image.memory(
-                            livraison.signature!,
-                            width: 52,
-                            height: 52,
-                            fit: BoxFit.contain,
-                          ),
-                        ),
-                      ),
+
                     const Spacer(),
                     TextButton.icon(
                       onPressed: onPhoto,
@@ -763,15 +718,7 @@ class _DeliveryCard extends StatelessWidget {
                       child: OutlinedButton.icon(
                         onPressed: onPhoto,
                         icon: const Icon(Icons.camera_alt_outlined),
-                        label: const Text('Photo'),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: onSignature,
-                        icon: const Icon(Icons.draw_outlined),
-                        label: const Text('Signature'),
+                        label: const Text('Photo de preuve'),
                       ),
                     ),
                   ],

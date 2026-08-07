@@ -16,7 +16,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
@@ -47,13 +47,9 @@ jobs:
           xcrun simctl install "${DEVICE_ID}" build/ios/iphonesimulator/Runner.app
           xcrun simctl io "${DEVICE_ID}" recordVideo --codec=h264 ios-simulator-demo.mp4 &
           VIDEO_PID=$!
-          xcrun simctl launch "${DEVICE_ID}" com.velzog.livraison.livraisonMobile
-          sleep 2
-          xcrun simctl io "${DEVICE_ID}" screenshot ios-simulator-01-launch.png
-          sleep 6
-          xcrun simctl io "${DEVICE_ID}" screenshot ios-simulator-02-after-render.png
-          xcrun simctl spawn "${DEVICE_ID}" log show --last 2m --style compact > ios-simulator.log || true
+          flutter test integration_test/demo_test.dart -d "${DEVICE_ID}"
           xcrun simctl io "${DEVICE_ID}" screenshot ios-simulator-03-before-shutdown.png
+          xcrun simctl spawn "${DEVICE_ID}" log show --last 2m --style compact > ios-simulator.log || true
           kill -INT "${VIDEO_PID}" || true
           wait "${VIDEO_PID}" || true
           xcrun simctl shutdown "${DEVICE_ID}" || true
@@ -62,13 +58,11 @@ jobs:
         run: ditto -c -k --sequesterRsrc --keepParent build/ios/iphonesimulator/Runner.app livraison_mobile-ios-simulator.zip
 
       - name: Upload simulator artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: livraison_mobile-ios-simulator
           path: |
             livraison_mobile-ios-simulator.zip
-            ios-simulator-01-launch.png
-            ios-simulator-02-after-render.png
             ios-simulator-03-before-shutdown.png
             ios-simulator-demo.mp4
             ios-simulator.log

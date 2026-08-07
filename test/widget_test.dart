@@ -8,7 +8,8 @@ void main() {
 
     expect(find.text('Ma tournée'), findsAtLeastNWidgets(1));
     expect(find.text('Livraisons du jour'), findsOneWidget);
-    expect(find.text('Sophie Martin'), findsOneWidget);
+    expect(find.text('Aucune livraison ajoutée.'), findsOneWidget);
+    expect(find.text('Signature'), findsNothing);
     await tester.scrollUntilVisible(
       find.text('Enregistrer la journée'),
       500,
