@@ -367,7 +367,7 @@ class _TourneePageState extends State<TourneePage> {
             const SizedBox(height: 16),
             TextField(
               controller: controller,
-              autofocus: true,
+              autofocus: !demo,
               decoration: const InputDecoration(
                 labelText: 'Nom du profil',
                 hintText: 'Saisir un nom',
