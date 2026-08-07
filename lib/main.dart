@@ -361,47 +361,99 @@ class _TourneePageState extends State<TourneePage> {
     final name = TextEditingController();
     final address = TextEditingController();
     final comment = TextEditingController();
+    Uint8List? photoBytes;
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Ajouter une livraison'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: name,
-              decoration: const InputDecoration(labelText: 'Nom du client'),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: address,
-              decoration: const InputDecoration(
-                labelText: 'Adresse (facultative)',
-                hintText: 'Laisser vide si inconnue',
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Ajouter une livraison'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: name,
+                decoration: const InputDecoration(labelText: 'Nom du client'),
               ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: comment,
-              maxLines: 3,
-              decoration: const InputDecoration(
-                labelText: 'Commentaire (facultatif)',
-                hintText: 'Ajouter une précision pour cette livraison',
-                prefixIcon: Icon(Icons.notes_outlined),
+              const SizedBox(height: 12),
+              TextField(
+                controller: address,
+                decoration: const InputDecoration(
+                  labelText: 'Adresse (facultative)',
+                  hintText: 'Laisser vide si inconnue',
+                ),
               ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: comment,
+                maxLines: 3,
+                decoration: const InputDecoration(
+                  labelText: 'Commentaire (facultatif)',
+                  hintText: 'Ajouter une précision pour cette livraison',
+                  prefixIcon: Icon(Icons.notes_outlined),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  if (photoBytes != null)
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: Image.memory(
+                        photoBytes!,
+                        width: 58,
+                        height: 58,
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                  if (photoBytes != null) const SizedBox(width: 10),
+                  Expanded(
+                    child: Wrap(
+                      spacing: 4,
+                      children: [
+                        TextButton.icon(
+                          onPressed: () async {
+                            final file = await _picker.pickImage(
+                              source: ImageSource.camera,
+                              imageQuality: 85,
+                            );
+                            if (file == null) return;
+                            final bytes = await file.readAsBytes();
+                            setDialogState(() => photoBytes = bytes);
+                          },
+                          icon: const Icon(Icons.camera_alt_outlined),
+                          label: const Text('Caméra'),
+                        ),
+                        TextButton.icon(
+                          onPressed: () async {
+                            final file = await _picker.pickImage(
+                              source: ImageSource.gallery,
+                              imageQuality: 85,
+                            );
+                            if (file == null) return;
+                            final bytes = await file.readAsBytes();
+                            setDialogState(() => photoBytes = bytes);
+                          },
+                          icon: const Icon(Icons.photo_library_outlined),
+                          label: const Text('Galerie'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Annuler'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Ajouter'),
             ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Annuler'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Ajouter'),
-          ),
-        ],
       ),
     );
     if (confirmed == true && name.text.trim().isNotEmpty && mounted) {
@@ -411,6 +463,8 @@ class _TourneePageState extends State<TourneePage> {
             destinataire: name.text.trim(),
             adresse: address.text.trim(),
             commentaire: comment.text.trim(),
+            statut: photoBytes == null ? 'À faire' : 'Livré',
+            photos: photoBytes == null ? [] : [photoBytes!],
           ),
         ),
       );
