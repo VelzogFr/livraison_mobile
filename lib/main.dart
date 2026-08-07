@@ -957,16 +957,33 @@ class _TourneePageState extends State<TourneePage> {
     final bytes = Uint8List.fromList(utf8.encode(html));
     const fileName = 'rapport_livraisons_complet.html';
     if (kIsWeb) {
-      await saveBackupFile(fileName, html);
-      final uri = Uri.https('mail.google.com', '/mail/u/0/', {
+      final uri = Uri.https('mail.google.com', '/mail/', {
         'view': 'cm',
         'fs': '1',
         'tf': '1',
         'su': 'Rapport complet des livraisons',
         'body':
-            'Le rapport complet a été téléchargé sous $fileName. Ajoutez-le comme pièce jointe avant l’envoi.',
+            'Le rapport complet sera téléchargé sous $fileName. Ajoutez-le comme pièce jointe avant l’envoi.',
       });
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
+      final opened = await launchUrl(uri, mode: LaunchMode.platformDefault);
+      await saveBackupFile(fileName, html);
+      if (!opened && mounted) {
+        await showDialog<void>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: const Text('Gmail non ouvert'),
+            content: const Text(
+              'Le rapport a été téléchargé. Ouvrez Gmail séparément puis ajoutez le fichier rapport_livraisons_complet.html.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Fermer'),
+              ),
+            ],
+          ),
+        );
+      }
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -1032,7 +1049,7 @@ class _TourneePageState extends State<TourneePage> {
     } catch (_) {
       if (!kIsWeb) rethrow;
       await saveBackupFile(fileName, utf8.decode(backupBytes));
-      final uri = Uri.https('mail.google.com', '/mail/u/0/', {
+      final uri = Uri.https('mail.google.com', '/mail/', {
         'view': 'cm',
         'fs': '1',
         'tf': '1',
@@ -1040,7 +1057,7 @@ class _TourneePageState extends State<TourneePage> {
         'body':
             '$report\n\nLa sauvegarde chiffrée a été téléchargée sous $fileName.',
       });
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
+      await launchUrl(uri, mode: LaunchMode.platformDefault);
     }
   }
 
