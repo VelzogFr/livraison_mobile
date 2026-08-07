@@ -38,6 +38,8 @@ dependencies:
   signature: ^6.4.0
   path_provider: ^2.1.6
   shared_preferences: ^2.5.5
+  flutter_secure_storage: ^11.0.0
+  cryptography: ^2.9.0
 
 dev_dependencies:
   flutter_test:

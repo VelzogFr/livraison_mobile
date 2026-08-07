@@ -2,7 +2,10 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:cryptography/cryptography.dart'
+    show AesGcm, Mac, SecretBox, SecretKey;
 import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -84,6 +87,8 @@ class _TourneePageState extends State<TourneePage> {
   ];
   List<Map<String, dynamic>> _history = [];
   bool _historyLoading = true;
+  final _secureStorage = const FlutterSecureStorage();
+  final _cipher = AesGcm.with256bits();
 
   @override
   void initState() {
@@ -91,14 +96,71 @@ class _TourneePageState extends State<TourneePage> {
     _loadHistory();
   }
 
+  Future<SecretKey> _getEncryptionKey() async {
+    var encoded = await _secureStorage.read(key: 'local_history_key');
+    if (encoded == null) {
+      final key = await _cipher.newSecretKey();
+      final bytes = await key.extractBytes();
+      encoded = base64UrlEncode(bytes);
+      await _secureStorage.write(key: 'local_history_key', value: encoded);
+    }
+    return SecretKey(base64Url.decode(encoded));
+  }
+
+  Future<String> _encryptHistory(List<Map<String, dynamic>> history) async {
+    final key = await _getEncryptionKey();
+    final nonce = _cipher.newNonce();
+    final box = await _cipher.encrypt(
+      utf8.encode(jsonEncode(history)),
+      secretKey: key,
+      nonce: nonce,
+    );
+    return jsonEncode({
+      'nonce': base64UrlEncode(nonce),
+      'cipherText': base64UrlEncode(box.cipherText),
+      'mac': base64UrlEncode(box.mac.bytes),
+    });
+  }
+
+  Future<List<Map<String, dynamic>>> _decryptHistory(String encoded) async {
+    final payload = jsonDecode(encoded) as Map<String, dynamic>;
+    final box = SecretBox(
+      base64Url.decode(payload['cipherText'] as String),
+      nonce: base64Url.decode(payload['nonce'] as String),
+      mac: Mac(base64Url.decode(payload['mac'] as String)),
+    );
+    final clear = await _cipher.decrypt(
+      box,
+      secretKey: await _getEncryptionKey(),
+    );
+    final values = jsonDecode(utf8.decode(clear)) as List<dynamic>;
+    return values
+        .map((item) => Map<String, dynamic>.from(item as Map))
+        .toList();
+  }
+
   Future<void> _loadHistory() async {
     final prefs = await SharedPreferences.getInstance();
-    final encoded = prefs.getStringList('saved_days') ?? [];
+    List<Map<String, dynamic>> loaded = [];
+    final encrypted = prefs.getString('saved_days_encrypted');
+    if (encrypted != null) {
+      loaded = await _decryptHistory(encrypted);
+    } else {
+      final legacy = prefs.getStringList('saved_days') ?? [];
+      if (legacy.isNotEmpty) {
+        loaded = legacy
+            .map((item) => jsonDecode(item) as Map<String, dynamic>)
+            .toList();
+        await prefs.setString(
+          'saved_days_encrypted',
+          await _encryptHistory(loaded),
+        );
+        await prefs.remove('saved_days');
+      }
+    }
     if (!mounted) return;
     setState(() {
-      _history = encoded
-          .map((item) => jsonDecode(item) as Map<String, dynamic>)
-          .toList();
+      _history = loaded;
       _historyLoading = false;
     });
   }
@@ -125,10 +187,11 @@ class _TourneePageState extends State<TourneePage> {
     final prefs = await SharedPreferences.getInstance();
     final snapshot = _daySnapshot();
     final updated = [snapshot, ..._history];
-    await prefs.setStringList(
-      'saved_days',
-      updated.map((item) => jsonEncode(item)).toList(),
+    await prefs.setString(
+      'saved_days_encrypted',
+      await _encryptHistory(updated),
     );
+    await prefs.remove('saved_days');
     if (!mounted) return;
     setState(() => _history = updated);
   }
@@ -322,6 +385,7 @@ class _TourneePageState extends State<TourneePage> {
     );
     if (confirmed != true) return;
     final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('saved_days_encrypted');
     await prefs.remove('saved_days');
     if (!mounted) return;
     setState(() => _history = []);
