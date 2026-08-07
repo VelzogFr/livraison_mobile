@@ -56,10 +56,10 @@ jobs:
           trap 'kill -TERM "${VIDEO_PID}" 2>/dev/null || true; wait "${VIDEO_PID}" 2>/dev/null || true; xcrun simctl shutdown "${DEVICE_ID}" || true' EXIT
           xcrun simctl launch "${DEVICE_ID}" com.velzog.livraison.livraisonMobile
           echo "[demo] app launched"
-          sleep 2
+          sleep 1
           xcrun simctl io "${DEVICE_ID}" screenshot ios-simulator-01-launch.png
           echo "[demo] launch screenshot captured"
-          sleep 5
+          sleep 6
           xcrun simctl io "${DEVICE_ID}" screenshot ios-simulator-02-delivery-photo.png
           echo "[demo] delivery/photo screenshot captured"
           sleep 5

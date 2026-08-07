@@ -87,8 +87,15 @@ class _TourneePageState extends State<TourneePage> {
   }
 
   Future<void> _runDemo() async {
-    await Future<void>.delayed(const Duration(seconds: 2));
+    for (
+      var attempt = 0;
+      attempt < 50 && (_profileLoading || _historyLoading);
+      attempt++
+    ) {
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    }
     if (!mounted) return;
+    await Future<void>.delayed(const Duration(seconds: 1));
     final delivery = Livraison(
       destinataire: 'Client de démonstration',
       adresse: '',
