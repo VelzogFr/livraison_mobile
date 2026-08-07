@@ -6,6 +6,7 @@ import 'package:cryptography/cryptography.dart'
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -179,6 +180,54 @@ class _TourneePageState extends State<TourneePage> {
         .toList();
   }
 
+  Future<Uint8List> _compactPhoto(Uint8List bytes) async {
+    final decoded = img.decodeImage(bytes);
+    if (decoded == null) return bytes;
+    final resized = decoded.width > 1280 || decoded.height > 1280
+        ? img.copyResize(
+            decoded,
+            width: decoded.width >= decoded.height ? 1280 : null,
+            height: decoded.height > decoded.width ? 1280 : null,
+          )
+        : decoded;
+    return Uint8List.fromList(img.encodeJpg(resized, quality: 60));
+  }
+
+  Future<List<Map<String, dynamic>>> _compactHistoryPhotos(
+    List<Map<String, dynamic>> history,
+  ) async {
+    for (final day in history) {
+      final deliveries = day['deliveries'];
+      if (deliveries is! List) continue;
+      for (final item in deliveries) {
+        if (item is! Map) continue;
+        final values = item['photosBase64'];
+        if (values is List) {
+          final compacted = <String>[];
+          for (final value in values.whereType<String>()) {
+            try {
+              final bytes = await _compactPhoto(base64Decode(value));
+              compacted.add(base64Encode(bytes));
+            } on FormatException {
+              compacted.add(value);
+            }
+          }
+          item['photosBase64'] = compacted;
+        } else if (item['photoBase64'] is String) {
+          try {
+            final bytes = await _compactPhoto(
+              base64Decode(item['photoBase64'] as String),
+            );
+            item['photoBase64'] = base64Encode(bytes);
+          } on FormatException {
+            // Keep malformed legacy data unchanged for compatibility.
+          }
+        }
+      }
+    }
+    return history;
+  }
+
   Future<void> _loadHistory() async {
     final prefs = await SharedPreferences.getInstance();
     List<Map<String, dynamic>> loaded = [];
@@ -196,6 +245,18 @@ class _TourneePageState extends State<TourneePage> {
           await _encryptHistory(loaded),
         );
         await prefs.remove('saved_days');
+      }
+    }
+    if (loaded.isNotEmpty) {
+      loaded = await _compactHistoryPhotos(loaded);
+      try {
+        await prefs.setString(
+          'saved_days_encrypted',
+          await _encryptHistory(loaded),
+        );
+        await prefs.remove('saved_days');
+      } catch (_) {
+        // Keep the in-memory history available if the browser quota is full.
       }
     }
     if (!mounted) return;
@@ -264,7 +325,7 @@ class _TourneePageState extends State<TourneePage> {
   Future<void> _addPhoto(Livraison livraison, ImageSource source) async {
     final file = await _picker.pickImage(source: source, imageQuality: 85);
     if (file == null) return;
-    final bytes = await file.readAsBytes();
+    final bytes = await _compactPhoto(await file.readAsBytes());
     if (!mounted) return;
     setState(() {
       livraison.photos.add(bytes);
@@ -280,7 +341,7 @@ class _TourneePageState extends State<TourneePage> {
     if (files.isEmpty) return;
     final bytes = <Uint8List>[];
     for (final file in files) {
-      bytes.add(await file.readAsBytes());
+      bytes.add(await _compactPhoto(await file.readAsBytes()));
     }
     if (!mounted) return;
     setState(() {
@@ -425,7 +486,9 @@ class _TourneePageState extends State<TourneePage> {
                                 imageQuality: 85,
                               );
                               if (file == null) return;
-                              final bytes = await file.readAsBytes();
+                              final bytes = await _compactPhoto(
+                                await file.readAsBytes(),
+                              );
                               setDialogState(() => photoBytes = bytes);
                             },
                             icon: const Icon(Icons.camera_alt_outlined),
@@ -438,7 +501,9 @@ class _TourneePageState extends State<TourneePage> {
                                 imageQuality: 85,
                               );
                               if (file == null) return;
-                              final bytes = await file.readAsBytes();
+                              final bytes = await _compactPhoto(
+                                await file.readAsBytes(),
+                              );
                               setDialogState(() => photoBytes = bytes);
                             },
                             icon: const Icon(Icons.photo_library_outlined),
