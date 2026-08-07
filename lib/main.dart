@@ -4,14 +4,12 @@ import 'dart:typed_data';
 import 'package:cryptography/cryptography.dart'
     show AesGcm, Mac, SecretBox, SecretKey;
 import 'package:file_selector/file_selector.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import 'platform_download.dart';
 
@@ -956,136 +954,22 @@ class _TourneePageState extends State<TourneePage> {
     final html = _buildHtmlReport();
     final bytes = Uint8List.fromList(utf8.encode(html));
     const fileName = 'rapport_livraisons_complet.html';
-    if (kIsWeb) {
-      final uri = Uri.https('mail.google.com', '/mail/', {
-        'view': 'cm',
-        'fs': '1',
-        'tf': '1',
-        'su': 'Rapport complet des livraisons',
-        'body':
-            'Le rapport complet sera téléchargé sous $fileName. Ajoutez-le comme pièce jointe avant l’envoi.',
-      });
-      final opened = await launchUrl(uri, mode: LaunchMode.platformDefault);
+    try {
+      await SharePlus.instance.share(
+        ShareParams(
+          subject: 'Rapport complet des livraisons',
+          text: 'Rapport complet avec les preuves photo.',
+          files: [XFile.fromData(bytes, name: fileName, mimeType: 'text/html')],
+        ),
+      );
+    } catch (_) {
       await saveBackupFile(fileName, html);
-      if (!opened && mounted) {
-        await showDialog<void>(
-          context: context,
-          builder: (dialogContext) => AlertDialog(
-            title: const Text('Gmail non ouvert'),
-            content: const Text(
-              'Le rapport a été téléchargé. Ouvrez Gmail séparément puis ajoutez le fichier rapport_livraisons_complet.html.',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(dialogContext),
-                child: const Text('Fermer'),
-              ),
-            ],
-          ),
-        );
-      }
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'Rapport téléchargé. Ajoutez rapport_livraisons_complet.html dans Gmail.',
+            'Rapport téléchargé. Sélectionnez votre application e-mail et ajoutez le fichier en pièce jointe.',
           ),
-        ),
-      );
-      return;
-    }
-    await SharePlus.instance.share(
-      ShareParams(
-        subject: 'Rapport complet des livraisons',
-        text: 'Rapport complet avec les preuves photo.',
-        files: [XFile.fromData(bytes, name: fileName, mimeType: 'text/html')],
-      ),
-    );
-  }
-
-  String _buildReport() {
-    final buffer = StringBuffer()
-      ..writeln('RAPPORT DES LIVRAISONS')
-      ..writeln('Généré le : ${DateTime.now().toLocal()}')
-      ..writeln();
-    for (final day in _history) {
-      buffer
-        ..writeln('Journée du ${day['date']}')
-        ..writeln('Kilométrage : ${day['mileage'] ?? 'non renseigné'}')
-        ..writeln('Compte-rendu : ${day['notes'] ?? ''}');
-      final deliveries = day['deliveries'] as List<dynamic>? ?? [];
-      for (final item in deliveries) {
-        final delivery = Map<String, dynamic>.from(item as Map);
-        final photos = _historyPhotos(delivery).length;
-        buffer.writeln(
-          '- ${delivery['name'] ?? ''} | ${delivery['status'] ?? ''} | '
-          '${delivery['address'] ?? ''} | photos : $photos',
-        );
-        final comment = delivery['comment']?.toString() ?? '';
-        if (comment.isNotEmpty) buffer.writeln('  Commentaire : $comment');
-      }
-      buffer.writeln();
-    }
-    return buffer.toString();
-  }
-
-  Future<void> _shareReportByGmail() async {
-    final report = _buildReport();
-    final backup = {
-      'format': 'livraison_mobile_encrypted_backup_v1',
-      'createdAt': DateTime.now().toIso8601String(),
-      'payload': await _encryptHistory(_history),
-    };
-    final backupBytes = Uint8List.fromList(utf8.encode(jsonEncode(backup)));
-    const fileName = 'historique_livraison.livraison-backup';
-    try {
-      await SharePlus.instance.share(
-        ShareParams(
-          subject: 'Rapport des livraisons',
-          text: report,
-          files: [XFile.fromData(backupBytes, name: fileName)],
-        ),
-      );
-    } catch (_) {
-      if (!kIsWeb) rethrow;
-      await saveBackupFile(fileName, utf8.decode(backupBytes));
-      final uri = Uri.https('mail.google.com', '/mail/', {
-        'view': 'cm',
-        'fs': '1',
-        'tf': '1',
-        'su': 'Rapport des livraisons',
-        'body':
-            '$report\n\nLa sauvegarde chiffrée a été téléchargée sous $fileName.',
-      });
-      await launchUrl(uri, mode: LaunchMode.platformDefault);
-    }
-  }
-
-  Future<void> _shareHistoryByEmail() async {
-    final backup = {
-      'format': 'livraison_mobile_encrypted_backup_v1',
-      'createdAt': DateTime.now().toIso8601String(),
-      'payload': await _encryptHistory(_history),
-    };
-    final bytes = Uint8List.fromList(utf8.encode(jsonEncode(backup)));
-    const fileName = 'historique_livraison.livraison-backup';
-    if (kIsWeb) {
-      await saveBackupFile(fileName, utf8.decode(bytes));
-      final uri = Uri(
-        scheme: 'mailto',
-        queryParameters: {
-          'subject': 'Historique de livraison',
-          'body':
-              'Le fichier $fileName a été téléchargé. Ajoutez-le à ce message avant l’envoi.',
-        },
-      );
-      await launchUrl(uri);
-    } else {
-      await SharePlus.instance.share(
-        ShareParams(
-          subject: 'Historique de livraison',
-          text: 'Historique chiffré des livraisons et preuves photo.',
-          files: [XFile.fromData(bytes, name: fileName)],
         ),
       );
     }
@@ -1276,16 +1160,6 @@ class _TourneePageState extends State<TourneePage> {
                     onPressed: _shareFullReport,
                     icon: const Icon(Icons.description_outlined),
                     label: const Text('Rapport complet + photos'),
-                  ),
-                  TextButton.icon(
-                    onPressed: _shareReportByGmail,
-                    icon: const Icon(Icons.mark_email_read_outlined),
-                    label: const Text('Rapport Gmail'),
-                  ),
-                  TextButton.icon(
-                    onPressed: _shareHistoryByEmail,
-                    icon: const Icon(Icons.mail_outline),
-                    label: const Text('Envoyer par e-mail'),
                   ),
                   TextButton.icon(
                     onPressed: _clearHistory,
