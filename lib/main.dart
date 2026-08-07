@@ -51,13 +51,21 @@ class Livraison {
     required this.adresse,
     this.commentaire = '',
     this.statut = 'À faire',
-    this.photoBytes,
-  });
+    List<Uint8List>? photos,
+  }) : photos = photos ?? <Uint8List>[];
   String destinataire;
   String adresse;
   String commentaire;
   String statut;
-  Uint8List? photoBytes;
+  final List<Uint8List> photos;
+
+  Uint8List? get photoBytes => photos.isEmpty ? null : photos.first;
+
+  set photoBytes(Uint8List? value) {
+    photos
+      ..clear()
+      ..addAll(value == null ? const <Uint8List>[] : [value]);
+  }
 }
 
 class TourneePage extends StatefulWidget {
@@ -208,7 +216,8 @@ class _TourneePageState extends State<TourneePage> {
             'address': delivery.adresse,
             'comment': delivery.commentaire,
             'status': delivery.statut,
-            'hasPhoto': delivery.photoBytes != null,
+            'hasPhoto': delivery.photos.isNotEmpty,
+            'photosBase64': delivery.photos.map(base64Encode).toList(),
             'photoBase64': delivery.photoBytes == null
                 ? null
                 : base64Encode(delivery.photoBytes!),
@@ -260,11 +269,28 @@ class _TourneePageState extends State<TourneePage> {
     final bytes = await file.readAsBytes();
     if (!mounted) return;
     setState(() {
-      livraison.photoBytes = bytes;
+      livraison.photos.add(bytes);
+      livraison.statut = 'Livré';
+    });
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Photo de preuve ajoutée')));
+  }
+
+  Future<void> _addGalleryPhotos(Livraison livraison) async {
+    final files = await _picker.pickMultiImage(imageQuality: 85);
+    if (files.isEmpty) return;
+    final bytes = <Uint8List>[];
+    for (final file in files) {
+      bytes.add(await file.readAsBytes());
+    }
+    if (!mounted) return;
+    setState(() {
+      livraison.photos.addAll(bytes);
       livraison.statut = 'Livré';
     });
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Photo de preuve enregistrée')),
+      SnackBar(content: Text('${bytes.length} photo(s) ajoutée(s)')),
     );
   }
 
@@ -288,10 +314,10 @@ class _TourneePageState extends State<TourneePage> {
             ),
             ListTile(
               leading: const Icon(Icons.photo_library_outlined),
-              title: const Text('Choisir dans la galerie'),
+              title: const Text('Choisir une ou plusieurs photos'),
               onTap: () {
                 Navigator.pop(context);
-                _addPhoto(livraison, ImageSource.gallery);
+                _addGalleryPhotos(livraison);
               },
             ),
           ],
@@ -306,7 +332,7 @@ class _TourneePageState extends State<TourneePage> {
     await sheet;
   }
 
-  Future<void> _removePhoto(Livraison livraison) async {
+  Future<void> _removePhoto(Livraison livraison, int photoIndex) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -326,8 +352,8 @@ class _TourneePageState extends State<TourneePage> {
     );
     if (confirmed != true || !mounted) return;
     setState(() {
-      livraison.photoBytes = null;
-      livraison.statut = 'À faire';
+      livraison.photos.removeAt(photoIndex);
+      if (livraison.photos.isEmpty) livraison.statut = 'À faire';
     });
   }
 
@@ -726,6 +752,25 @@ class _TourneePageState extends State<TourneePage> {
     );
   }
 
+  List<Uint8List> _historyPhotos(Map<String, dynamic> delivery) {
+    final values = delivery['photosBase64'];
+    if (values is List) {
+      return values
+          .whereType<String>()
+          .map((value) {
+            try {
+              return base64Decode(value);
+            } on FormatException {
+              return null;
+            }
+          })
+          .whereType<Uint8List>()
+          .toList();
+    }
+    final legacy = _historyPhoto(delivery);
+    return legacy == null ? <Uint8List>[] : [legacy];
+  }
+
   Uint8List? _historyPhoto(Map<String, dynamic> delivery) {
     final encoded = delivery['photoBase64'];
     if (encoded is! String || encoded.isEmpty) return null;
@@ -768,22 +813,41 @@ class _TourneePageState extends State<TourneePage> {
                         child: Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            _historyPhoto(delivery) == null
+                            _historyPhotos(delivery).isEmpty
                                 ? const Icon(Icons.local_shipping_outlined)
-                                : GestureDetector(
-                                    onTap: () => _showPhotoPreview(
-                                      _historyPhoto(delivery)!,
-                                      delivery['name'] as String? ??
-                                          'Photo de preuve',
-                                    ),
-                                    child: ClipRRect(
-                                      borderRadius: BorderRadius.circular(8),
-                                      child: Image.memory(
-                                        _historyPhoto(delivery)!,
-                                        width: 72,
-                                        height: 72,
-                                        fit: BoxFit.cover,
-                                      ),
+                                : SizedBox(
+                                    width: 160,
+                                    height: 72,
+                                    child: ListView.separated(
+                                      scrollDirection: Axis.horizontal,
+                                      itemCount: _historyPhotos(
+                                        delivery,
+                                      ).length,
+                                      separatorBuilder: (_, _) =>
+                                          const SizedBox(width: 6),
+                                      itemBuilder: (context, index) {
+                                        final photo = _historyPhotos(
+                                          delivery,
+                                        )[index];
+                                        return GestureDetector(
+                                          onTap: () => _showPhotoPreview(
+                                            photo,
+                                            delivery['name'] as String? ??
+                                                'Photo de preuve',
+                                          ),
+                                          child: ClipRRect(
+                                            borderRadius: BorderRadius.circular(
+                                              8,
+                                            ),
+                                            child: Image.memory(
+                                              photo,
+                                              width: 72,
+                                              height: 72,
+                                              fit: BoxFit.cover,
+                                            ),
+                                          ),
+                                        );
+                                      },
                                     ),
                                   ),
                             const SizedBox(width: 12),
@@ -815,7 +879,7 @@ class _TourneePageState extends State<TourneePage> {
                                         color: Colors.grey.shade700,
                                       ),
                                     ),
-                                  if (_historyPhoto(delivery) != null)
+                                  if (_historyPhotos(delivery).isNotEmpty)
                                     const Text('Photo de preuve enregistrée'),
                                 ],
                               ),
@@ -967,7 +1031,8 @@ class _TourneePageState extends State<TourneePage> {
                 index: entry.key + 1,
                 livraison: entry.value,
                 onPhoto: () => _showPhotoOptions(entry.value),
-                onRemovePhoto: () => _removePhoto(entry.value),
+                onRemovePhoto: (photoIndex) =>
+                    _removePhoto(entry.value, photoIndex),
                 onEdit: () => _editDelivery(entry.value),
                 onPreview: (bytes) =>
                     _showPhotoPreview(bytes, entry.value.destinataire),
@@ -1097,7 +1162,7 @@ class _DeliveryCard extends StatelessWidget {
   final int index;
   final Livraison livraison;
   final VoidCallback onPhoto;
-  final VoidCallback onRemovePhoto;
+  final ValueChanged<int> onRemovePhoto;
   final VoidCallback onEdit;
   final ValueChanged<Uint8List> onPreview;
 
@@ -1183,30 +1248,51 @@ class _DeliveryCard extends StatelessWidget {
                 padding: const EdgeInsets.only(top: 14),
                 child: Row(
                   children: [
-                    if (livraison.photoBytes != null)
-                      GestureDetector(
-                        onTap: () => onPreview(livraison.photoBytes!),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(8),
-                          child: Image.memory(
-                            livraison.photoBytes!,
-                            width: 52,
-                            height: 52,
-                            fit: BoxFit.cover,
-                          ),
+                    Expanded(
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          children: livraison.photos.asMap().entries.map((
+                            entry,
+                          ) {
+                            return Padding(
+                              padding: const EdgeInsets.only(right: 8),
+                              child: Stack(
+                                children: [
+                                  GestureDetector(
+                                    onTap: () => onPreview(entry.value),
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(8),
+                                      child: Image.memory(
+                                        entry.value,
+                                        width: 60,
+                                        height: 60,
+                                        fit: BoxFit.cover,
+                                      ),
+                                    ),
+                                  ),
+                                  Positioned(
+                                    right: 0,
+                                    top: 0,
+                                    child: InkWell(
+                                      onTap: () => onRemovePhoto(entry.key),
+                                      child: const CircleAvatar(
+                                        radius: 10,
+                                        child: Icon(Icons.close, size: 13),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }).toList(),
                         ),
                       ),
-
-                    const Spacer(),
+                    ),
                     TextButton.icon(
                       onPressed: onPhoto,
-                      icon: const Icon(Icons.edit_outlined, size: 18),
-                      label: const Text('Modifier la photo'),
-                    ),
-                    IconButton(
-                      onPressed: onRemovePhoto,
-                      tooltip: 'Supprimer la photo',
-                      icon: const Icon(Icons.delete_outline),
+                      icon: const Icon(Icons.add_a_photo_outlined, size: 18),
+                      label: const Text('Ajouter'),
                     ),
                   ],
                 ),
