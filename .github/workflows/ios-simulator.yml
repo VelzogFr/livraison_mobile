@@ -47,7 +47,8 @@ jobs:
           xcrun simctl install "${DEVICE_ID}" build/ios/iphonesimulator/Runner.app
           xcrun simctl io "${DEVICE_ID}" recordVideo --codec=h264 ios-simulator-demo.mp4 &
           VIDEO_PID=$!
-          xcrun simctl launch "${DEVICE_ID}" com.velzog.livraison.livraisonMobile
+          trap 'kill -INT "${VIDEO_PID}" 2>/dev/null || true; wait "${VIDEO_PID}" 2>/dev/null || true; xcrun simctl shutdown "${DEVICE_ID}" || true' EXIT
+          timeout 240 flutter test integration_test/demo_test.dart -d "${DEVICE_ID}"
           sleep 2
           xcrun simctl io "${DEVICE_ID}" screenshot ios-simulator-01-launch.png
           sleep 6

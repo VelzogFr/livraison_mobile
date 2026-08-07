@@ -6,25 +6,46 @@ import 'package:livraison_mobile/main.dart';
 void main() {
   final binding = IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets('demo des fonctionnalités principales', (tester) async {
+  testWidgets('demonstration fonctionnelle tournée, photo et profil local', (
+    tester,
+  ) async {
     await tester.pumpWidget(const LivraisonApp());
     await tester.pumpAndSettle();
     await binding.takeScreenshot('01-tournee-vide');
 
     await tester.tap(find.text('Ajouter une livraison'));
     await tester.pumpAndSettle();
-    final fields = find.byType(TextField);
-    await tester.enterText(fields.at(0), 'Client de démonstration');
-    await tester.enterText(fields.at(1), '1 rue de la Démonstration');
+    final dialogFields = find.descendant(
+      of: find.byType(AlertDialog),
+      matching: find.byType(TextField),
+    );
+    await tester.enterText(dialogFields.at(0), 'Client de test');
+    // L'adresse est volontairement laissée vide : elle est facultative.
     await tester.tap(find.text('Ajouter'));
     await tester.pumpAndSettle();
-    await binding.takeScreenshot('02-livraison-ajoutee');
+    expect(find.text('Adresse non renseignée'), findsOneWidget);
+    await binding.takeScreenshot('02-adresse-facultative');
 
     await tester.tap(find.text('Photo de preuve'));
     await tester.pumpAndSettle();
-    await binding.takeScreenshot('03-options-preuve-photo');
+    expect(find.text('Prendre une photo'), findsOneWidget);
+    expect(find.text('Choisir dans la galerie'), findsOneWidget);
+    await binding.takeScreenshot('03-options-photo');
     await tester.pageBack();
     await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Profil'));
+    await tester.pumpAndSettle();
+    expect(find.text('Profil local'), findsOneWidget);
+    final profileField = find.descendant(
+      of: find.byType(BottomSheet),
+      matching: find.byType(TextField),
+    );
+    await tester.enterText(profileField, 'Profil de test local');
+    await tester.tap(find.text('Enregistrer le profil'));
+    await tester.pumpAndSettle();
+    expect(find.text('Profil local enregistré'), findsOneWidget);
+    await binding.takeScreenshot('04-profil-local');
 
     await tester.scrollUntilVisible(
       find.text('Enregistrer la journée'),
@@ -35,13 +56,11 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Enregistrer'));
     await tester.pumpAndSettle();
-    await binding.takeScreenshot('04-journee-enregistree');
+    await binding.takeScreenshot('05-journee-enregistree');
 
     await tester.tap(find.text('Historique'));
     await tester.pumpAndSettle();
-    await binding.takeScreenshot('05-historique-local');
-    await tester.tap(find.text('Exporter'));
-    await tester.pumpAndSettle();
-    await binding.takeScreenshot('06-export-chiffre');
+    expect(find.text('Historique local'), findsOneWidget);
+    await binding.takeScreenshot('06-historique-local');
   });
 }
