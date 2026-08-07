@@ -1,13 +1,14 @@
 import 'dart:convert';
-import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:cryptography/cryptography.dart'
     show AesGcm, Mac, SecretBox, SecretKey;
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import 'platform_download.dart';
 
 const _demoMode = bool.fromEnvironment('DEMO_MODE', defaultValue: false);
 
@@ -48,12 +49,12 @@ class Livraison {
     required this.destinataire,
     required this.adresse,
     this.statut = 'À faire',
-    this.photo,
+    this.photoBytes,
   });
   final String destinataire;
   final String adresse;
   String statut;
-  File? photo;
+  Uint8List? photoBytes;
 }
 
 class TourneePage extends StatefulWidget {
@@ -68,6 +69,7 @@ class _TourneePageState extends State<TourneePage> {
   final _mileageController = TextEditingController();
   final _profileNameController = TextEditingController();
   final _profileLoginController = TextEditingController();
+  Uint8List? _avatarBytes;
   DateTime _selectedDate = DateTime.now();
   final _picker = ImagePicker();
   final _livraisons = <Livraison>[];
@@ -117,6 +119,8 @@ class _TourneePageState extends State<TourneePage> {
     if (!mounted) return;
     _profileNameController.text = prefs.getString('local_profile_name') ?? '';
     _profileLoginController.text = prefs.getString('local_profile_login') ?? '';
+    final avatar = prefs.getString('local_profile_avatar');
+    _avatarBytes = avatar == null ? null : base64Decode(avatar);
     setState(() => _profileLoading = false);
   }
 
@@ -200,7 +204,10 @@ class _TourneePageState extends State<TourneePage> {
             'name': delivery.destinataire,
             'address': delivery.adresse,
             'status': delivery.statut,
-            'hasPhoto': delivery.photo != null,
+            'hasPhoto': delivery.photoBytes != null,
+            'photoBase64': delivery.photoBytes == null
+                ? null
+                : base64Encode(delivery.photoBytes!),
           },
         )
         .toList(),
@@ -245,9 +252,11 @@ class _TourneePageState extends State<TourneePage> {
 
   Future<void> _addPhoto(Livraison livraison, ImageSource source) async {
     final file = await _picker.pickImage(source: source, imageQuality: 85);
-    if (file == null || !mounted) return;
+    if (file == null) return;
+    final bytes = await file.readAsBytes();
+    if (!mounted) return;
     setState(() {
-      livraison.photo = File(file.path);
+      livraison.photoBytes = bytes;
       livraison.statut = 'Livré';
     });
     ScaffoldMessenger.of(context).showSnackBar(
@@ -349,78 +358,120 @@ class _TourneePageState extends State<TourneePage> {
     final loginController = TextEditingController(
       text: _profileLoginController.text,
     );
+    var avatarBytes = _avatarBytes;
     final sheet = showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
-      builder: (sheetContext) => Padding(
-        padding: EdgeInsets.fromLTRB(
-          20,
-          8,
-          20,
-          MediaQuery.viewInsetsOf(sheetContext).bottom + 24,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Profil local',
-              style: Theme.of(sheetContext).textTheme.headlineSmall,
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Ce profil reste sur ce téléphone. Il ne s’agit pas d’une connexion Google ou d’un compte cloud.',
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: controller,
-              autofocus: true,
-              decoration: const InputDecoration(
-                labelText: 'Nom du profil',
-                hintText: 'Saisir un nom',
-                prefixIcon: Icon(Icons.person_outline),
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, setModalState) => Padding(
+          padding: EdgeInsets.fromLTRB(
+            20,
+            8,
+            20,
+            MediaQuery.viewInsetsOf(sheetContext).bottom + 24,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Profil local',
+                style: Theme.of(sheetContext).textTheme.headlineSmall,
               ),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: loginController,
-              keyboardType: TextInputType.emailAddress,
-              decoration: const InputDecoration(
-                labelText: 'Identifiant de connexion local',
-                hintText: 'ex. prenom.nom',
-                prefixIcon: Icon(Icons.alternate_email),
+              const SizedBox(height: 8),
+              const Text(
+                'Ce profil reste sur ce téléphone. Il ne s’agit pas d’une connexion Google ou d’un compte cloud.',
               ),
-            ),
-            const SizedBox(height: 16),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: () async {
-                  final prefs = await SharedPreferences.getInstance();
-                  await prefs.setString(
-                    'local_profile_name',
-                    controller.text.trim(),
-                  );
-                  await prefs.setString(
-                    'local_profile_login',
-                    loginController.text.trim(),
-                  );
-                  if (!sheetContext.mounted) return;
-                  _profileNameController.text = controller.text.trim();
-                  _profileLoginController.text = loginController.text.trim();
-                  Navigator.pop(sheetContext);
-                  if (!mounted) return;
-                  setState(() {});
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Profil local enregistré')),
-                  );
-                },
-                icon: const Icon(Icons.save_outlined),
-                label: const Text('Enregistrer le profil'),
+              const SizedBox(height: 16),
+              Center(
+                child: Column(
+                  children: [
+                    CircleAvatar(
+                      radius: 42,
+                      backgroundImage: avatarBytes == null
+                          ? null
+                          : MemoryImage(avatarBytes!),
+                      child: avatarBytes == null
+                          ? const Icon(Icons.person_outline, size: 42)
+                          : null,
+                    ),
+                    TextButton.icon(
+                      onPressed: () async {
+                        final picked = await _picker.pickImage(
+                          source: ImageSource.gallery,
+                          imageQuality: 80,
+                        );
+                        if (picked == null || !sheetContext.mounted) return;
+                        final bytes = await picked.readAsBytes();
+                        if (!sheetContext.mounted) return;
+                        setModalState(() => avatarBytes = bytes);
+                      },
+                      icon: const Icon(Icons.add_a_photo_outlined),
+                      label: const Text('Choisir un avatar'),
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ],
+              const SizedBox(height: 8),
+              TextField(
+                controller: controller,
+                autofocus: true,
+                decoration: const InputDecoration(
+                  labelText: 'Nom du profil',
+                  hintText: 'Saisir un nom',
+                  prefixIcon: Icon(Icons.person_outline),
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: loginController,
+                keyboardType: TextInputType.emailAddress,
+                decoration: const InputDecoration(
+                  labelText: 'Identifiant de connexion local',
+                  hintText: 'ex. prenom.nom',
+                  prefixIcon: Icon(Icons.alternate_email),
+                ),
+              ),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: () async {
+                    final prefs = await SharedPreferences.getInstance();
+                    await prefs.setString(
+                      'local_profile_name',
+                      controller.text.trim(),
+                    );
+                    await prefs.setString(
+                      'local_profile_login',
+                      loginController.text.trim(),
+                    );
+                    if (avatarBytes == null) {
+                      await prefs.remove('local_profile_avatar');
+                    } else {
+                      await prefs.setString(
+                        'local_profile_avatar',
+                        base64Encode(avatarBytes!),
+                      );
+                    }
+                    if (!sheetContext.mounted) return;
+                    _profileNameController.text = controller.text.trim();
+                    _profileLoginController.text = loginController.text.trim();
+                    _avatarBytes = avatarBytes;
+                    Navigator.pop(sheetContext);
+                    if (!mounted) return;
+                    setState(() {});
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Profil local enregistré')),
+                    );
+                  },
+                  icon: const Icon(Icons.save_outlined),
+                  label: const Text('Enregistrer le profil'),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -494,19 +545,116 @@ class _TourneePageState extends State<TourneePage> {
   }
 
   Future<void> _exportHistory() async {
-    final directory = await getApplicationDocumentsDirectory();
     final backup = {
       'format': 'livraison_mobile_encrypted_backup_v1',
       'createdAt': DateTime.now().toIso8601String(),
       'payload': await _encryptHistory(_history),
     };
-    final file = File(
-      '${directory.path}/historique_livraison.livraison-backup',
+    final path = await saveBackupFile(
+      'historique_livraison.livraison-backup',
+      jsonEncode(backup),
     );
-    await file.writeAsString(jsonEncode(backup));
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Sauvegarde chiffrée créée : ${file.path}')),
+      SnackBar(content: Text('Sauvegarde chiffrée créée : $path')),
+    );
+  }
+
+  Uint8List? _historyPhoto(Map<String, dynamic> delivery) {
+    final encoded = delivery['photoBase64'];
+    if (encoded is! String || encoded.isEmpty) return null;
+    try {
+      return base64Decode(encoded);
+    } on FormatException {
+      return null;
+    }
+  }
+
+  Future<void> _showHistoryDay(Map<String, dynamic> day) async {
+    final deliveries = (day['deliveries'] as List<dynamic>? ?? [])
+        .map((item) => Map<String, dynamic>.from(item as Map))
+        .toList();
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Journée du ${day['date']}'),
+        content: SizedBox(
+          width: 520,
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Kilométrage : ${day['mileage'].toString().isEmpty ? 'non renseigné' : '${day['mileage']} km'}',
+                ),
+                if ((day['notes'] as String? ?? '').isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Text('Compte-rendu : ${day['notes']}'),
+                ],
+                const SizedBox(height: 16),
+                if (deliveries.isEmpty)
+                  const Text('Aucune livraison enregistrée.')
+                else
+                  ...deliveries.map(
+                    (delivery) => Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _historyPhoto(delivery) == null
+                                ? const Icon(Icons.local_shipping_outlined)
+                                : ClipRRect(
+                                    borderRadius: BorderRadius.circular(8),
+                                    child: Image.memory(
+                                      _historyPhoto(delivery)!,
+                                      width: 72,
+                                      height: 72,
+                                      fit: BoxFit.cover,
+                                    ),
+                                  ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    delivery['name'] as String? ?? 'Client',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  Text(
+                                    (delivery['address'] as String?)
+                                                ?.isNotEmpty ==
+                                            true
+                                        ? delivery['address'] as String
+                                        : 'Adresse non renseignée',
+                                  ),
+                                  Text(
+                                    'Statut : ${delivery['status'] ?? 'À faire'}',
+                                  ),
+                                  if (_historyPhoto(delivery) != null)
+                                    const Text('Photo de preuve enregistrée'),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Fermer'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -549,8 +697,9 @@ class _TourneePageState extends State<TourneePage> {
                           leading: const Icon(Icons.event_available),
                           title: Text('Journée du ${day['date']}'),
                           subtitle: Text(
-                            'Kilométrage : ${day['mileage'].toString().isEmpty ? 'non renseigné' : '${day['mileage']} km'}',
+                            '${(day['deliveries'] as List<dynamic>? ?? []).length} livraison(s) · Kilométrage : ${day['mileage'].toString().isEmpty ? 'non renseigné' : '${day['mileage']} km'}\nAppuyer pour voir les informations et les photos',
                           ),
+                          onTap: () => _showHistoryDay(day),
                         ),
                       ),
                     ),
@@ -831,11 +980,11 @@ class _DeliveryCard extends StatelessWidget {
                 padding: const EdgeInsets.only(top: 14),
                 child: Row(
                   children: [
-                    if (livraison.photo != null)
+                    if (livraison.photoBytes != null)
                       ClipRRect(
                         borderRadius: BorderRadius.circular(8),
-                        child: Image.file(
-                          livraison.photo!,
+                        child: Image.memory(
+                          livraison.photoBytes!,
                           width: 52,
                           height: 52,
                           fit: BoxFit.cover,
