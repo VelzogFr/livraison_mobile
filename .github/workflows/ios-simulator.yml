@@ -16,10 +16,10 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Set up Flutter
-        uses: subosito/flutter-action@v2
+        uses: subosito/flutter-action@v2.23.0
         with:
           channel: stable
           cache: true
@@ -62,7 +62,7 @@ jobs:
         run: ditto -c -k --sequesterRsrc --keepParent build/ios/iphonesimulator/Runner.app livraison_mobile-ios-simulator.zip
 
       - name: Upload simulator artifacts
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: livraison_mobile-ios-simulator
           path: |
