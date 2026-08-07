@@ -367,81 +367,92 @@ class _TourneePageState extends State<TourneePage> {
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
           title: const Text('Ajouter une livraison'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: name,
-                decoration: const InputDecoration(labelText: 'Nom du client'),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: address,
-                decoration: const InputDecoration(
-                  labelText: 'Adresse (facultative)',
-                  hintText: 'Laisser vide si inconnue',
+          content: SingleChildScrollView(
+            child: Column(
+              children: [
+                TextField(
+                  controller: name,
+                  decoration: const InputDecoration(labelText: 'Nom du client'),
                 ),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: comment,
-                maxLines: 3,
-                decoration: const InputDecoration(
-                  labelText: 'Commentaire (facultatif)',
-                  hintText: 'Ajouter une précision pour cette livraison',
-                  prefixIcon: Icon(Icons.notes_outlined),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: address,
+                  decoration: const InputDecoration(
+                    labelText: 'Adresse (facultative)',
+                    hintText: 'Laisser vide si inconnue',
+                  ),
                 ),
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  if (photoBytes != null)
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: Image.memory(
-                        photoBytes!,
-                        width: 58,
-                        height: 58,
-                        fit: BoxFit.cover,
-                      ),
-                    ),
-                  if (photoBytes != null) const SizedBox(width: 10),
-                  Expanded(
-                    child: Wrap(
-                      spacing: 4,
-                      children: [
-                        TextButton.icon(
-                          onPressed: () async {
-                            final file = await _picker.pickImage(
-                              source: ImageSource.camera,
-                              imageQuality: 85,
-                            );
-                            if (file == null) return;
-                            final bytes = await file.readAsBytes();
-                            setDialogState(() => photoBytes = bytes);
-                          },
-                          icon: const Icon(Icons.camera_alt_outlined),
-                          label: const Text('Caméra'),
-                        ),
-                        TextButton.icon(
-                          onPressed: () async {
-                            final file = await _picker.pickImage(
-                              source: ImageSource.gallery,
-                              imageQuality: 85,
-                            );
-                            if (file == null) return;
-                            final bytes = await file.readAsBytes();
-                            setDialogState(() => photoBytes = bytes);
-                          },
-                          icon: const Icon(Icons.photo_library_outlined),
-                          label: const Text('Galerie'),
-                        ),
-                      ],
+                const SizedBox(height: 12),
+                TextField(
+                  controller: comment,
+                  maxLines: 3,
+                  decoration: const InputDecoration(
+                    labelText: 'Commentaire (facultatif)',
+                    hintText: 'Ajouter une précision pour cette livraison',
+                    prefixIcon: Icon(Icons.notes_outlined),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Photo de preuve (facultatif)',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
-                ],
-              ),
-            ],
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    if (photoBytes != null)
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Image.memory(
+                          photoBytes!,
+                          width: 58,
+                          height: 58,
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                    if (photoBytes != null) const SizedBox(width: 10),
+                    Expanded(
+                      child: Wrap(
+                        spacing: 4,
+                        children: [
+                          TextButton.icon(
+                            onPressed: () async {
+                              final file = await _picker.pickImage(
+                                source: ImageSource.camera,
+                                imageQuality: 85,
+                              );
+                              if (file == null) return;
+                              final bytes = await file.readAsBytes();
+                              setDialogState(() => photoBytes = bytes);
+                            },
+                            icon: const Icon(Icons.camera_alt_outlined),
+                            label: const Text('Caméra'),
+                          ),
+                          TextButton.icon(
+                            onPressed: () async {
+                              final file = await _picker.pickImage(
+                                source: ImageSource.gallery,
+                                imageQuality: 85,
+                              );
+                              if (file == null) return;
+                              final bytes = await file.readAsBytes();
+                              setDialogState(() => photoBytes = bytes);
+                            },
+                            icon: const Icon(Icons.photo_library_outlined),
+                            label: const Text('Galerie'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
           actions: [
             TextButton(
