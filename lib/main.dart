@@ -956,28 +956,34 @@ class _TourneePageState extends State<TourneePage> {
     final html = _buildHtmlReport();
     final bytes = Uint8List.fromList(utf8.encode(html));
     const fileName = 'rapport_livraisons_complet.html';
-    try {
-      await SharePlus.instance.share(
-        ShareParams(
-          subject: 'Rapport complet des livraisons',
-          text: 'Rapport complet avec les preuves photo.',
-          files: [XFile.fromData(bytes, name: fileName, mimeType: 'text/html')],
+    if (kIsWeb) {
+      await saveBackupFile(fileName, html);
+      final uri = Uri.https('mail.google.com', '/mail/u/0/', {
+        'view': 'cm',
+        'fs': '1',
+        'tf': '1',
+        'su': 'Rapport complet des livraisons',
+        'body':
+            'Le rapport complet a été téléchargé sous $fileName. Ajoutez-le comme pièce jointe avant l’envoi.',
+      });
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Rapport téléchargé. Ajoutez rapport_livraisons_complet.html dans Gmail.',
+          ),
         ),
       );
-    } catch (_) {
-      await saveBackupFile(fileName, html);
-      if (kIsWeb) {
-        final uri = Uri.https('mail.google.com', '/mail/u/0/', {
-          'view': 'cm',
-          'fs': '1',
-          'tf': '1',
-          'su': 'Rapport complet des livraisons',
-          'body':
-              'Le fichier $fileName a été téléchargé. Ajoutez-le à ce message avant l’envoi.',
-        });
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-      }
+      return;
     }
+    await SharePlus.instance.share(
+      ShareParams(
+        subject: 'Rapport complet des livraisons',
+        text: 'Rapport complet avec les preuves photo.',
+        files: [XFile.fromData(bytes, name: fileName, mimeType: 'text/html')],
+      ),
+    );
   }
 
   String _buildReport() {
