@@ -1,9 +1,11 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:signature/signature.dart';
 
 void main() => runApp(const LivraisonApp());
@@ -80,6 +82,56 @@ class _TourneePageState extends State<TourneePage> {
       adresse: '4 impasse du Moulin, Montreuil',
     ),
   ];
+  List<Map<String, dynamic>> _history = [];
+  bool _historyLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadHistory();
+  }
+
+  Future<void> _loadHistory() async {
+    final prefs = await SharedPreferences.getInstance();
+    final encoded = prefs.getStringList('saved_days') ?? [];
+    if (!mounted) return;
+    setState(() {
+      _history = encoded
+          .map((item) => jsonDecode(item) as Map<String, dynamic>)
+          .toList();
+      _historyLoading = false;
+    });
+  }
+
+  Map<String, dynamic> _daySnapshot() => {
+    'date': _dateLabel,
+    'mileage': _mileageController.text.trim(),
+    'notes': _notesController.text.trim(),
+    'savedAt': DateTime.now().toIso8601String(),
+    'deliveries': _livraisons
+        .map(
+          (delivery) => {
+            'name': delivery.destinataire,
+            'address': delivery.adresse,
+            'status': delivery.statut,
+            'hasPhoto': delivery.photo != null,
+            'hasSignature': delivery.signature != null,
+          },
+        )
+        .toList(),
+  };
+
+  Future<void> _persistDay() async {
+    final prefs = await SharedPreferences.getInstance();
+    final snapshot = _daySnapshot();
+    final updated = [snapshot, ..._history];
+    await prefs.setStringList(
+      'saved_days',
+      updated.map((item) => jsonEncode(item)).toList(),
+    );
+    if (!mounted) return;
+    setState(() => _history = updated);
+  }
 
   @override
   void dispose() {
@@ -215,12 +267,125 @@ class _TourneePageState extends State<TourneePage> {
     );
   }
 
-  void _saveDay() {
+  Future<void> _saveDay() async {
     FocusManager.instance.primaryFocus?.unfocus();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Confirmer la journée'),
+        content: const Text(
+          'La journée sera enregistrée uniquement sur ce téléphone, sans envoi serveur.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Annuler'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Enregistrer'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    await _persistDay();
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          'Journée enregistrée : $_livrees/${_livraisons.length} livraisons',
+          'Journée enregistrée localement : $_livrees/${_livraisons.length} livraisons',
+        ),
+      ),
+    );
+  }
+
+  Future<void> _clearHistory() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Supprimer l’historique ?'),
+        content: const Text(
+          'Cette action supprime toutes les journées enregistrées sur ce téléphone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Annuler'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Supprimer'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('saved_days');
+    if (!mounted) return;
+    setState(() => _history = []);
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Historique local supprimé')));
+  }
+
+  Future<void> _exportHistory() async {
+    final directory = await getApplicationDocumentsDirectory();
+    final file = File('${directory.path}/historique_livraison.json');
+    await file.writeAsString(jsonEncode(_history));
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('Export local créé : ${file.path}')));
+  }
+
+  Future<void> _showHistory() async {
+    if (_historyLoading) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) => SafeArea(
+        child: SizedBox(
+          height: MediaQuery.sizeOf(context).height * .7,
+          child: _history.isEmpty
+              ? const Center(child: Text('Aucune journée enregistrée.'))
+              : ListView(
+                  padding: const EdgeInsets.all(20),
+                  children: [
+                    Text(
+                      'Historique local',
+                      style: Theme.of(context).textTheme.headlineSmall,
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        TextButton.icon(
+                          onPressed: _exportHistory,
+                          icon: const Icon(Icons.download_outlined),
+                          label: const Text('Exporter'),
+                        ),
+                        TextButton.icon(
+                          onPressed: _clearHistory,
+                          icon: const Icon(Icons.delete_outline),
+                          label: const Text('Tout supprimer'),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    ..._history.map(
+                      (day) => Card(
+                        child: ListTile(
+                          leading: const Icon(Icons.event_available),
+                          title: Text('Journée du ${day['date']}'),
+                          subtitle: Text(
+                            'Kilométrage : ${day['mileage'].toString().isEmpty ? 'non renseigné' : '${day['mileage']} km'}',
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
         ),
       ),
     );
@@ -332,7 +497,9 @@ class _TourneePageState extends State<TourneePage> {
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: 0,
-        onDestinationSelected: (_) {},
+        onDestinationSelected: (index) {
+          if (index == 1) _showHistory();
+        },
         destinations: const [
           NavigationDestination(
             icon: Icon(Icons.route_outlined),
