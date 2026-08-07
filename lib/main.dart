@@ -67,6 +67,7 @@ class _TourneePageState extends State<TourneePage> {
   final _notesController = TextEditingController();
   final _mileageController = TextEditingController();
   final _profileNameController = TextEditingController();
+  final _profileLoginController = TextEditingController();
   DateTime _selectedDate = DateTime.now();
   final _picker = ImagePicker();
   final _livraisons = <Livraison>[];
@@ -106,9 +107,6 @@ class _TourneePageState extends State<TourneePage> {
     await _showPhotoOptions(delivery, demo: true);
     await Future<void>.delayed(const Duration(seconds: 2));
     if (!mounted) return;
-    await _showProfile(demo: true);
-    await Future<void>.delayed(const Duration(seconds: 2));
-    if (!mounted) return;
     await _persistDay();
     await Future<void>.delayed(const Duration(seconds: 2));
     if (mounted) await _showHistory();
@@ -118,6 +116,7 @@ class _TourneePageState extends State<TourneePage> {
     final prefs = await SharedPreferences.getInstance();
     if (!mounted) return;
     _profileNameController.text = prefs.getString('local_profile_name') ?? '';
+    _profileLoginController.text = prefs.getString('local_profile_login') ?? '';
     setState(() => _profileLoading = false);
   }
 
@@ -225,6 +224,7 @@ class _TourneePageState extends State<TourneePage> {
     _notesController.dispose();
     _mileageController.dispose();
     _profileNameController.dispose();
+    _profileLoginController.dispose();
     super.dispose();
   }
 
@@ -343,10 +343,11 @@ class _TourneePageState extends State<TourneePage> {
     address.dispose();
   }
 
-  Future<void> _showProfile({bool demo = false}) async {
+  Future<void> _showProfile() async {
     if (_profileLoading) return;
-    final controller = TextEditingController(
-      text: demo ? 'Profil de démonstration' : _profileNameController.text,
+    final controller = TextEditingController(text: _profileNameController.text);
+    final loginController = TextEditingController(
+      text: _profileLoginController.text,
     );
     final sheet = showModalBottomSheet<void>(
       context: context,
@@ -374,11 +375,21 @@ class _TourneePageState extends State<TourneePage> {
             const SizedBox(height: 16),
             TextField(
               controller: controller,
-              autofocus: !demo,
+              autofocus: true,
               decoration: const InputDecoration(
                 labelText: 'Nom du profil',
                 hintText: 'Saisir un nom',
                 prefixIcon: Icon(Icons.person_outline),
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: loginController,
+              keyboardType: TextInputType.emailAddress,
+              decoration: const InputDecoration(
+                labelText: 'Identifiant de connexion local',
+                hintText: 'ex. prenom.nom',
+                prefixIcon: Icon(Icons.alternate_email),
               ),
             ),
             const SizedBox(height: 16),
@@ -391,8 +402,13 @@ class _TourneePageState extends State<TourneePage> {
                     'local_profile_name',
                     controller.text.trim(),
                   );
+                  await prefs.setString(
+                    'local_profile_login',
+                    loginController.text.trim(),
+                  );
                   if (!sheetContext.mounted) return;
                   _profileNameController.text = controller.text.trim();
+                  _profileLoginController.text = loginController.text.trim();
                   Navigator.pop(sheetContext);
                   if (!mounted) return;
                   setState(() {});
@@ -408,18 +424,9 @@ class _TourneePageState extends State<TourneePage> {
         ),
       ),
     );
-    if (demo) {
-      Future<void>.delayed(const Duration(seconds: 3), () async {
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('local_profile_name', controller.text.trim());
-        if (!mounted) return;
-        _profileNameController.text = controller.text.trim();
-        Navigator.of(context).pop();
-        setState(() {});
-      });
-    }
     await sheet;
     controller.dispose();
+    loginController.dispose();
   }
 
   Future<void> _saveDay() async {
