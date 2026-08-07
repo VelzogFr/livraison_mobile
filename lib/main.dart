@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:cryptography/cryptography.dart'
     show AesGcm, Mac, SecretBox, SecretKey;
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:image_picker/image_picker.dart';
@@ -544,6 +545,67 @@ class _TourneePageState extends State<TourneePage> {
     ).showSnackBar(const SnackBar(content: Text('Historique local supprimé')));
   }
 
+  Future<void> _importHistory() async {
+    final file = await openFile(
+      acceptedTypeGroups: [
+        XTypeGroup(
+          label: 'Sauvegarde Livraison',
+          extensions: ['livraison-backup'],
+        ),
+      ],
+    );
+    if (file == null) return;
+    try {
+      final raw = utf8.decode(await file.readAsBytes());
+      final backup = jsonDecode(raw) as Map<String, dynamic>;
+      final encoded = backup['payload'] as String;
+      final imported = await _decryptHistory(encoded);
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+        'saved_days_encrypted',
+        await _encryptHistory(imported),
+      );
+      await prefs.remove('saved_days');
+      if (!mounted) return;
+      setState(() => _history = imported);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${imported.length} journée(s) importée(s)')),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Impossible d’importer cette sauvegarde chiffrée sur cet appareil.',
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<void> _showPhotoPreview(Uint8List bytes, String title) async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => Dialog(
+        child: InteractiveViewer(
+          minScale: 0.5,
+          maxScale: 4,
+          child: Stack(
+            alignment: Alignment.topRight,
+            children: [
+              Image.memory(bytes, fit: BoxFit.contain),
+              IconButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                tooltip: 'Fermer',
+                icon: const Icon(Icons.close),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _exportHistory() async {
     final backup = {
       'format': 'livraison_mobile_encrypted_backup_v1',
@@ -604,13 +666,20 @@ class _TourneePageState extends State<TourneePage> {
                           children: [
                             _historyPhoto(delivery) == null
                                 ? const Icon(Icons.local_shipping_outlined)
-                                : ClipRRect(
-                                    borderRadius: BorderRadius.circular(8),
-                                    child: Image.memory(
+                                : GestureDetector(
+                                    onTap: () => _showPhotoPreview(
                                       _historyPhoto(delivery)!,
-                                      width: 72,
-                                      height: 72,
-                                      fit: BoxFit.cover,
+                                      delivery['name'] as String? ??
+                                          'Photo de preuve',
+                                    ),
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(8),
+                                      child: Image.memory(
+                                        _historyPhoto(delivery)!,
+                                        width: 72,
+                                        height: 72,
+                                        fit: BoxFit.cover,
+                                      ),
                                     ),
                                   ),
                             const SizedBox(width: 12),
@@ -682,6 +751,11 @@ class _TourneePageState extends State<TourneePage> {
                           onPressed: _exportHistory,
                           icon: const Icon(Icons.download_outlined),
                           label: const Text('Exporter'),
+                        ),
+                        TextButton.icon(
+                          onPressed: _importHistory,
+                          icon: const Icon(Icons.upload_file_outlined),
+                          label: const Text('Importer'),
                         ),
                         TextButton.icon(
                           onPressed: _clearHistory,
@@ -789,6 +863,8 @@ class _TourneePageState extends State<TourneePage> {
                 index: entry.key + 1,
                 livraison: entry.value,
                 onPhoto: () => _showPhotoOptions(entry.value),
+                onPreview: (bytes) =>
+                    _showPhotoPreview(bytes, entry.value.destinataire),
               ),
             ),
             const SizedBox(height: 20),
@@ -908,10 +984,12 @@ class _DeliveryCard extends StatelessWidget {
     required this.index,
     required this.livraison,
     required this.onPhoto,
+    required this.onPreview,
   });
   final int index;
   final Livraison livraison;
   final VoidCallback onPhoto;
+  final ValueChanged<Uint8List> onPreview;
 
   @override
   Widget build(BuildContext context) {
@@ -981,13 +1059,16 @@ class _DeliveryCard extends StatelessWidget {
                 child: Row(
                   children: [
                     if (livraison.photoBytes != null)
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: Image.memory(
-                          livraison.photoBytes!,
-                          width: 52,
-                          height: 52,
-                          fit: BoxFit.cover,
+                      GestureDetector(
+                        onTap: () => onPreview(livraison.photoBytes!),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: Image.memory(
+                            livraison.photoBytes!,
+                            width: 52,
+                            height: 52,
+                            fit: BoxFit.cover,
+                          ),
                         ),
                       ),
 
