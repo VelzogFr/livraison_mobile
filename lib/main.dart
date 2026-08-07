@@ -932,7 +932,16 @@ class _TourneePageState extends State<TourneePage> {
     };
     final backupBytes = Uint8List.fromList(utf8.encode(jsonEncode(backup)));
     const fileName = 'historique_livraison.livraison-backup';
-    if (kIsWeb) {
+    try {
+      await SharePlus.instance.share(
+        ShareParams(
+          subject: 'Rapport des livraisons',
+          text: report,
+          files: [XFile.fromData(backupBytes, name: fileName)],
+        ),
+      );
+    } catch (_) {
+      if (!kIsWeb) rethrow;
       await saveBackupFile(fileName, utf8.decode(backupBytes));
       final uri = Uri.https('mail.google.com', '/mail/u/0/', {
         'view': 'cm',
@@ -943,14 +952,6 @@ class _TourneePageState extends State<TourneePage> {
             '$report\n\nLa sauvegarde chiffrée a été téléchargée sous $fileName.',
       });
       await launchUrl(uri, mode: LaunchMode.externalApplication);
-    } else {
-      await SharePlus.instance.share(
-        ShareParams(
-          subject: 'Rapport des livraisons',
-          text: report,
-          files: [XFile.fromData(backupBytes, name: fileName)],
-        ),
-      );
     }
   }
 
@@ -1143,62 +1144,65 @@ class _TourneePageState extends State<TourneePage> {
       builder: (context) => SafeArea(
         child: SizedBox(
           height: MediaQuery.sizeOf(context).height * .7,
-          child: _history.isEmpty
-              ? const Center(child: Text('Aucune journée enregistrée.'))
-              : ListView(
-                  padding: const EdgeInsets.all(20),
-                  children: [
-                    Text(
-                      'Historique local',
-                      style: Theme.of(context).textTheme.headlineSmall,
-                    ),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 4,
-                      children: [
-                        TextButton.icon(
-                          onPressed: _exportHistory,
-                          icon: const Icon(Icons.download_outlined),
-                          label: const Text('Exporter'),
-                        ),
-                        TextButton.icon(
-                          onPressed: _importHistory,
-                          icon: const Icon(Icons.upload_file_outlined),
-                          label: const Text('Importer'),
-                        ),
-                        TextButton.icon(
-                          onPressed: _shareReportByGmail,
-                          icon: const Icon(Icons.mark_email_read_outlined),
-                          label: const Text('Rapport Gmail'),
-                        ),
-                        TextButton.icon(
-                          onPressed: _shareHistoryByEmail,
-                          icon: const Icon(Icons.mail_outline),
-                          label: const Text('Envoyer par e-mail'),
-                        ),
-                        TextButton.icon(
-                          onPressed: _clearHistory,
-                          icon: const Icon(Icons.delete_outline),
-                          label: const Text('Tout supprimer'),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    ..._history.map(
-                      (day) => Card(
-                        child: ListTile(
-                          leading: const Icon(Icons.event_available),
-                          title: Text('Journée du ${day['date']}'),
-                          subtitle: Text(
-                            '${(day['deliveries'] as List<dynamic>? ?? []).length} livraison(s) · Kilométrage : ${day['mileage'].toString().isEmpty ? 'non renseigné' : '${day['mileage']} km'}\nAppuyer pour voir les informations et les photos',
-                          ),
-                          onTap: () => _showHistoryDay(day),
-                        ),
-                      ),
-                    ),
-                  ],
+          child: ListView(
+            padding: const EdgeInsets.all(20),
+            children: [
+              Text(
+                'Historique local',
+                style: Theme.of(context).textTheme.headlineSmall,
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 4,
+                children: [
+                  TextButton.icon(
+                    onPressed: _exportHistory,
+                    icon: const Icon(Icons.download_outlined),
+                    label: const Text('Exporter'),
+                  ),
+                  TextButton.icon(
+                    onPressed: _importHistory,
+                    icon: const Icon(Icons.upload_file_outlined),
+                    label: const Text('Importer'),
+                  ),
+                  TextButton.icon(
+                    onPressed: _shareReportByGmail,
+                    icon: const Icon(Icons.mark_email_read_outlined),
+                    label: const Text('Rapport Gmail'),
+                  ),
+                  TextButton.icon(
+                    onPressed: _shareHistoryByEmail,
+                    icon: const Icon(Icons.mail_outline),
+                    label: const Text('Envoyer par e-mail'),
+                  ),
+                  TextButton.icon(
+                    onPressed: _clearHistory,
+                    icon: const Icon(Icons.delete_outline),
+                    label: const Text('Tout supprimer'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              if (_history.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 24),
+                  child: Text('Aucune journée enregistrée.'),
                 ),
+              ..._history.map(
+                (day) => Card(
+                  child: ListTile(
+                    leading: const Icon(Icons.event_available),
+                    title: Text('Journée du ${day['date']}'),
+                    subtitle: Text(
+                      '${(day['deliveries'] as List<dynamic>? ?? []).length} livraison(s) · Kilométrage : ${day['mileage'].toString().isEmpty ? 'non renseigné' : '${day['mileage']} km'}\nAppuyer pour voir les informations et les photos',
+                    ),
+                    onTap: () => _showHistoryDay(day),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
