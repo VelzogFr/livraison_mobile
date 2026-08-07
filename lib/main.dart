@@ -306,6 +306,31 @@ class _TourneePageState extends State<TourneePage> {
     await sheet;
   }
 
+  Future<void> _removePhoto(Livraison livraison) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Supprimer la photo ?'),
+        content: const Text('La preuve photo sera retirée de cette livraison.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Annuler'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Supprimer'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() {
+      livraison.photoBytes = null;
+      livraison.statut = 'À faire';
+    });
+  }
+
   Future<void> _addDelivery() async {
     final name = TextEditingController();
     final address = TextEditingController();
@@ -890,11 +915,14 @@ class _TourneePageState extends State<TourneePage> {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 8, 20, 30),
           children: [
-            Text(
-              'Ma tournée du jour',
-              style: Theme.of(
-                context,
-              ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
+            Center(
+              child: Text(
+                'Journal de bord de ma journée',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
             ),
             const SizedBox(height: 4),
             TextButton.icon(
@@ -950,6 +978,7 @@ class _TourneePageState extends State<TourneePage> {
                 index: entry.key + 1,
                 livraison: entry.value,
                 onPhoto: () => _showPhotoOptions(entry.value),
+                onRemovePhoto: () => _removePhoto(entry.value),
                 onEdit: () => _editDelivery(entry.value),
                 onPreview: (bytes) =>
                     _showPhotoPreview(bytes, entry.value.destinataire),
@@ -1072,12 +1101,14 @@ class _DeliveryCard extends StatelessWidget {
     required this.index,
     required this.livraison,
     required this.onPhoto,
+    required this.onRemovePhoto,
     required this.onEdit,
     required this.onPreview,
   });
   final int index;
   final Livraison livraison;
   final VoidCallback onPhoto;
+  final VoidCallback onRemovePhoto;
   final VoidCallback onEdit;
   final ValueChanged<Uint8List> onPreview;
 
@@ -1180,8 +1211,13 @@ class _DeliveryCard extends StatelessWidget {
                     const Spacer(),
                     TextButton.icon(
                       onPressed: onPhoto,
-                      icon: const Icon(Icons.add_a_photo_outlined, size: 18),
-                      label: const Text('Preuve'),
+                      icon: const Icon(Icons.edit_outlined, size: 18),
+                      label: const Text('Modifier la photo'),
+                    ),
+                    IconButton(
+                      onPressed: onRemovePhoto,
+                      tooltip: 'Supprimer la photo',
+                      icon: const Icon(Icons.delete_outline),
                     ),
                   ],
                 ),
