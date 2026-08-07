@@ -396,12 +396,19 @@ class _TourneePageState extends State<TourneePage> {
 
   Future<void> _exportHistory() async {
     final directory = await getApplicationDocumentsDirectory();
-    final file = File('${directory.path}/historique_livraison.json');
-    await file.writeAsString(jsonEncode(_history));
+    final backup = {
+      'format': 'livraison_mobile_encrypted_backup_v1',
+      'createdAt': DateTime.now().toIso8601String(),
+      'payload': await _encryptHistory(_history),
+    };
+    final file = File(
+      '${directory.path}/historique_livraison.livraison-backup',
+    );
+    await file.writeAsString(jsonEncode(backup));
     if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text('Export local créé : ${file.path}')));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Sauvegarde chiffrée créée : ${file.path}')),
+    );
   }
 
   Future<void> _showHistory() async {

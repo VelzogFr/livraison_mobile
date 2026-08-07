@@ -46,9 +46,12 @@ jobs:
           xcrun simctl list devices | grep -F "${DEVICE_ID}" | grep -q "Booted" || { echo "Simulator did not boot"; exit 1; }
           xcrun simctl install "${DEVICE_ID}" build/ios/iphonesimulator/Runner.app
           xcrun simctl launch "${DEVICE_ID}" com.velzog.livraison.livraisonMobile
-          sleep 8
-          xcrun simctl io "${DEVICE_ID}" screenshot ios-simulator.png
+          sleep 2
+          xcrun simctl io "${DEVICE_ID}" screenshot ios-simulator-01-launch.png
+          sleep 6
+          xcrun simctl io "${DEVICE_ID}" screenshot ios-simulator-02-after-render.png
           xcrun simctl spawn "${DEVICE_ID}" log show --last 2m --style compact > ios-simulator.log || true
+          xcrun simctl io "${DEVICE_ID}" screenshot ios-simulator-03-before-shutdown.png
           xcrun simctl shutdown "${DEVICE_ID}" || true
 
       - name: Package simulator app
@@ -60,6 +63,8 @@ jobs:
           name: livraison_mobile-ios-simulator
           path: |
             livraison_mobile-ios-simulator.zip
-            ios-simulator.png
+            ios-simulator-01-launch.png
+            ios-simulator-02-after-render.png
+            ios-simulator-03-before-shutdown.png
             ios-simulator.log
           retention-days: 14
